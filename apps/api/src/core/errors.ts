@@ -19,5 +19,10 @@ export const forbidden = (message = 'Forbidden'): AppError => new AppError('forb
 
 export const notFound = (message = 'Not found'): AppError => new AppError('not_found', message);
 
+export const conflict = (message = 'Conflict'): AppError => new AppError('conflict', message);
+
+export const validationError = (message = 'Validation failed'): AppError =>
+  new AppError('validation_error', message);
+
 export const badRequest = (message = 'Bad request'): AppError =>
   new AppError('bad_request', message);

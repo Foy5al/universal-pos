@@ -15,6 +15,7 @@ export const PERMISSION_KEYS = [
   'catalog:manage',
   'inventory:read',
   'inventory:adjust',
+  'inventory:manage',
   'purchases:read',
   'purchases:manage',
   'sales:read',

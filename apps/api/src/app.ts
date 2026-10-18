@@ -4,14 +4,20 @@ import type { SessionResolver } from './core/sessionResolver';
 import { authenticate } from './middleware/authenticate';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { createAuthRouter, createLoginHandler } from './routes/auth';
+import { createCatalogRouter } from './routes/catalog';
 import { createHealthRouter } from './routes/health';
+import { createInventoryRouter } from './routes/inventory';
 import { createStoresRouter } from './routes/stores';
 import type { AuthService } from './services/authService';
+import type { CatalogService } from './services/catalog';
+import type { InventoryService } from './services/inventory';
 import type { StoreRepository } from '@pos/db';
 
 export interface AppDeps {
   sessions: SessionResolver;
   stores: StoreRepository;
+  catalog: CatalogService;
+  inventory: InventoryService;
   auth: AuthService;
 }
 
@@ -34,6 +40,8 @@ export function createApp(deps: AppDeps): Express {
   v1.use(authenticate(deps.sessions));
   v1.use(createAuthRouter(deps.auth));
   v1.use(createStoresRouter(deps.stores));
+  v1.use(createCatalogRouter(deps.catalog));
+  v1.use(createInventoryRouter(deps.inventory));
   app.use('/v1', v1);
 
   app.use(notFoundHandler);

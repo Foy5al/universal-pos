@@ -12,6 +12,13 @@
     "lint": "eslint .",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "infra:up": "docker compose -f infra/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "infra:reset": "docker compose -f infra/docker-compose.yml down -v",
+    "stack:up": "docker compose -f infra/docker-compose.yml --profile app up --build",
+    "stack:down": "docker compose -f infra/docker-compose.yml --profile app down",
+    "db:migrate": "pnpm --filter @pos/db db:migrate",
+    "db:seed": "pnpm --filter @pos/db db:seed",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml}\""
   },

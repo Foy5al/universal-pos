@@ -2,16 +2,22 @@ import type { OrganizationRef, UserRecord } from '@pos/db';
 import {
   createDb,
   createDrizzleAuthorizationRepository,
+  createDrizzleCatalogRepository,
+  createDrizzleInventoryRepository,
   createDrizzleMembershipRepository,
   createDrizzleSessionRepository,
   createDrizzleStoreRepository,
   createDrizzleUserRepository,
   InMemoryAuthorizationRepository,
+  InMemoryCatalogRepository,
+  InMemoryInventoryRepository,
   InMemoryMembershipRepository,
   InMemorySessionRepository,
   InMemoryStoreRepository,
   InMemoryUserRepository,
+  type CatalogSeed,
   type Database,
+  type InventorySeed,
   type StoreRecord,
 } from '@pos/db';
 import type { Principal } from '@pos/contracts';
@@ -20,6 +26,8 @@ import type { AppDeps } from './app';
 import { Argon2PasswordHasher } from './core/passwordHasher';
 import { RepositorySessionResolver } from './core/sessionResolver';
 import { OpaqueTokenService } from './core/tokenService';
+import { createCatalogService } from './services/catalog';
+import { createInventoryService } from './services/inventory';
 import { DefaultAuthService } from './services/authService';
 
 const DEFAULT_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -30,6 +38,8 @@ export interface MemorySeed {
   stores?: readonly StoreRecord[];
   memberships?: ReadonlyArray<{ userId: string; organizationId: string }>;
   organizations?: readonly OrganizationRef[];
+  catalog?: CatalogSeed;
+  inventory?: InventorySeed;
 }
 
 /** In-memory wiring for tests and local development without a database. */
@@ -50,9 +60,14 @@ export function createMemoryDeps(seed: MemorySeed = {}): AppDeps {
     sessionTtlMs: DEFAULT_SESSION_TTL_MS,
   });
 
+  const catalogRepository = new InMemoryCatalogRepository(seed.catalog);
+  const inventoryRepository = new InMemoryInventoryRepository(seed.inventory);
+
   return {
     sessions: new RepositorySessionResolver({ sessions: sessionRepo, authorization, tokens }),
     stores: new InMemoryStoreRepository(seed.stores ?? []),
+    catalog: createCatalogService(catalogRepository),
+    inventory: createInventoryService(inventoryRepository, catalogRepository.products),
     auth,
   };
 }
@@ -72,9 +87,16 @@ export function createPostgresDeps(db: Database): AppDeps {
     sessionTtlMs: DEFAULT_SESSION_TTL_MS,
   });
 
+  const catalogRepository = createDrizzleCatalogRepository(db);
+
   return {
     sessions: new RepositorySessionResolver({ sessions: sessionRepo, authorization, tokens }),
     stores: createDrizzleStoreRepository(db),
+    catalog: createCatalogService(catalogRepository),
+    inventory: createInventoryService(
+      createDrizzleInventoryRepository(db),
+      catalogRepository.products,
+    ),
     auth,
   };
 }

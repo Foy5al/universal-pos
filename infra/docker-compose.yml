@@ -1,3 +1,5 @@
+name: universal-pos
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -17,5 +19,88 @@ services:
       timeout: 5s
       retries: 10
 
+  minio:
+    image: minio/minio:latest
+    container_name: universal-pos-storage
+    restart: unless-stopped
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: pos
+      MINIO_ROOT_PASSWORD: pos-secret
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - pos-storage-data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Full stack inside containers. The default `up` only runs postgres + minio;
+  # add `--profile app` to build and run migrate, api and web too.
+  #   docker compose -f infra/docker-compose.yml --profile app up --build
+
+  migrate:
+    image: universal-pos-api:local
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    container_name: universal-pos-migrate
+    profiles: ['app']
+    command: ['sh', '-c', 'pnpm --filter @pos/db db:migrate && pnpm --filter @pos/db db:seed']
+    environment:
+      DATABASE_URL: postgresql://pos:pos@postgres:5432/pos
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    image: universal-pos-api:local
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    container_name: universal-pos-api
+    profiles: ['app']
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://pos:pos@postgres:5432/pos
+      SESSION_SECRET: ${SESSION_SECRET:-local-dev-session-secret-change-me}
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_REGION: us-east-1
+      STORAGE_BUCKET: universal-pos-dev
+      STORAGE_ACCESS_KEY_ID: pos
+      STORAGE_SECRET_ACCESS_KEY: pos-secret
+    ports:
+      - '4000:4000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:4000}
+    container_name: universal-pos-web
+    profiles: ['app']
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    ports:
+      - '3000:3000'
+    depends_on:
+      api:
+        condition: service_started
+
 volumes:
   pos-db-data:
+  pos-storage-data:

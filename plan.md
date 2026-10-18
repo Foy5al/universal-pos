@@ -11,7 +11,7 @@
 - Offline store: IndexedDB via Dexie, versioned local schema, service-worker precache, transactional sales outbox.
 - Serverless deployment: Next.js and Express as separate Vercel projects for non-commercial development only; Express exported as a function entrypoint.
 - Production deployment: Docker images for web, API, PostgreSQL and optional worker/Redis behind reverse proxy; no provider-specific business code.
-- Media: Cloudflare R2 via an S3-compatible storage adapter; allow migration to S3, MinIO, or another compatible service.
+- Media: Backblaze B2 (10 GB free, no card) via an S3-compatible storage adapter; MinIO for local dev; allow migration to S3, Cloudflare R2 or another compatible service.
 - Reports: ExcelJS (.xlsx) and CSV, strict tenant/store authorization, streaming or queued export for large datasets.
 - Authentication: online-issued, revocable sessions; scoped, expiring offline device authorization for checkout only.
 - Money: integer minor units (for BDT, poisha); quantity/weight as exact decimal, never binary floating-point arithmetic for finances.
@@ -178,7 +178,7 @@ universal-pos/
 - `apps/web`: deploy Next.js to Vercel for non-commercial testing; `apps/api`: separately deploy Vercel-compatible Express entrypoint.
 - `apps/api` exports `app` without calling `listen()` in import path; local/docker server imports `app` and calls `listen()`.
 - Connect API to Neon pooled PostgreSQL through environment variables; use migrations in controlled deployment, not runtime cold start.
-- R2 stores product media via presigned URLs; serve public images through controlled CDN paths; private objects use signed access.
+- B2 stores product media via presigned URLs; serve public images through controlled CDN paths; private objects use signed access.
 - Do not use Vercel Function memory/process lifetime for cron daemons, durable queues, local files, websockets or persistent workers.
 - Configure domains via `NEXT_PUBLIC_API_BASE_URL`, `DATABASE_URL`, `STORAGE_*`, `SESSION_*`, `PWA_*`; never hardcode Vercel URLs.
 - Add `/health`, `/ready`, external error tracking, structured logs, periodic backups and restore verification.
@@ -256,7 +256,8 @@ universal-pos/
 - Vercel Hobby terms: https://vercel.com/legal/terms
 - Vercel Express guide: https://vercel.com/docs/frameworks/backend/express
 - Neon free plan: https://neon.com/blog/neon-free-plan-1-gb-per-project
-- Cloudflare R2 pricing: https://developers.cloudflare.com/r2/pricing/
+- Backblaze B2 pricing (10 GB free, no card): https://www.backblaze.com/cloud-storage/pricing
+- Free S3-compatible alternatives (no card): Filebase https://filebase.com/free/, Tigris https://www.tigrisdata.com/pricing
 - Cloudinary plans: https://cloudinary.com/documentation/billing_and_plans
 - Browser Background Sync support: https://developer.mozilla.org/en-US/docs/Web/API/Background_Synchronization_API
 - IndexedDB transactions: https://dexie.org/docs/Dexie/Dexie.transaction%28%29
