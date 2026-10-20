@@ -9,14 +9,19 @@ import type {
   LoginRequest,
   Page,
   CreatePurchaseOrderRequest,
+  CreateRestockRequest,
   CreateSupplierRequest,
+  Device,
   Product,
   PurchaseOrder,
   PurchaseReceiveResult,
   ReceivePurchaseOrderRequest,
   Refund,
   Register,
+  RegisterDeviceRequest,
   RegisterShift,
+  RestockRequest,
+  RestockRequestStatus,
   Sale,
   SaleListQuery,
   SalesSummary,
@@ -28,6 +33,10 @@ import type {
   StockMovement,
   StoreActivity,
   Supplier,
+  SyncConflict,
+  SyncPullResponse,
+  SyncPushRequest,
+  SyncPushResponse,
   Unit,
 } from '@pos/contracts';
 
@@ -201,6 +210,43 @@ export function createSale(body: unknown): Promise<Sale> {
   return apiFetch('/sales', { method: 'POST', body });
 }
 
+export function getSale(id: string): Promise<Sale> {
+  return apiFetch(`/sales/${encodeURIComponent(id)}`);
+}
+
+export function pushSync(body: SyncPushRequest): Promise<SyncPushResponse> {
+  return apiFetch('/sync/push', { method: 'POST', body });
+}
+
+export function pullSync(query: {
+  deviceId: string;
+  cursor: number;
+  limit?: number;
+}): Promise<SyncPullResponse> {
+  const params = new URLSearchParams({
+    deviceId: query.deviceId,
+    cursor: String(query.cursor),
+  });
+  if (query.limit !== undefined) params.set('limit', String(query.limit));
+  return apiFetch(`/sync/pull?${params.toString()}`);
+}
+
+export function listDevices(): Promise<Device[]> {
+  return apiFetch('/devices');
+}
+
+export function registerDevice(body: RegisterDeviceRequest): Promise<Device> {
+  return apiFetch('/devices', { method: 'POST', body });
+}
+
+export function revokeDevice(id: string): Promise<Device> {
+  return apiFetch(`/devices/${encodeURIComponent(id)}/revoke`, { method: 'POST' });
+}
+
+export function listSyncConflicts(limit = 50): Promise<SyncConflict[]> {
+  return apiFetch(`/sync/conflicts?limit=${limit}`);
+}
+
 export function listSales(query: SaleListQuery = { limit: 20, offset: 0 }): Promise<Page<Sale>> {
   return apiFetch(`/sales?limit=${query.limit}&offset=${query.offset}`);
 }
@@ -246,6 +292,23 @@ export function createSupplier(body: CreateSupplierRequest): Promise<Supplier> {
 
 export function listPurchaseOrders(): Promise<Page<PurchaseOrder>> {
   return apiFetch('/purchases/orders?limit=200');
+}
+
+export function listRestockRequests(status?: RestockRequestStatus): Promise<Page<RestockRequest>> {
+  const params = new URLSearchParams({ limit: '200' });
+  if (status) params.set('status', status);
+  return apiFetch(`/restock-requests?${params.toString()}`);
+}
+
+export function createRestockRequest(body: CreateRestockRequest): Promise<RestockRequest> {
+  return apiFetch('/restock-requests', { method: 'POST', body });
+}
+
+export function dismissRestockRequest(id: string): Promise<RestockRequest> {
+  return apiFetch(`/restock-requests/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: { status: 'dismissed' },
+  });
 }
 
 export function createPurchaseOrder(body: CreatePurchaseOrderRequest): Promise<PurchaseOrder> {

@@ -1,17 +1,21 @@
 'use client';
 
+import type { RestockRequest } from '@pos/contracts';
 import Link from 'next/link';
 import { useState } from 'react';
 
 import { PurchaseOrderForm } from './components/PurchaseOrderForm';
 import { PurchaseOrdersPanel } from './components/PurchaseOrdersPanel';
 import { ReceiveOrderPanel } from './components/ReceiveOrderPanel';
+import { RestockOrderForm } from './components/RestockOrderForm';
+import { RestockPanel } from './components/RestockPanel';
 import { SupplierPanel } from './components/SupplierPanel';
 import { usePurchasing } from './usePurchasing';
 
 export default function PurchasingPage() {
   const data = usePurchasing();
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [restockSelection, setRestockSelection] = useState<RestockRequest[] | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const selectedOrder = data.orders.find((order) => order.id === selectedOrderId) ?? null;
 
@@ -74,18 +78,40 @@ export default function PurchasingPage() {
               onCreate={data.addSupplier}
             />
             {data.canManage ? (
-              <PurchaseOrderForm
-                suppliers={data.suppliers}
-                locations={data.locations}
-                products={data.products}
-                busy={data.busy}
-                onCreate={async (input) => {
-                  setSuccess(null);
-                  const order = await data.addOrder(input);
-                  setSuccess(`Draft purchase order ${order.id.slice(0, 8)} created.`);
-                  return order;
-                }}
-              />
+              restockSelection ? (
+                <RestockOrderForm
+                  key={restockSelection.map((request) => request.id).join(',')}
+                  requests={restockSelection}
+                  products={data.products}
+                  suppliers={data.suppliers}
+                  locations={data.locations}
+                  busy={data.busy}
+                  onCancel={() => setRestockSelection(null)}
+                  onCreate={async (input) => {
+                    setSuccess(null);
+                    const order = await data.addOrder(input);
+                    setRestockSelection(null);
+                    await data.refreshRestock();
+                    setSuccess(
+                      `Draft purchase order ${order.id.slice(0, 8)} created from restock requests. Mark it ordered, then receive the GRN.`,
+                    );
+                    return order;
+                  }}
+                />
+              ) : (
+                <PurchaseOrderForm
+                  suppliers={data.suppliers}
+                  locations={data.locations}
+                  products={data.products}
+                  busy={data.busy}
+                  onCreate={async (input) => {
+                    setSuccess(null);
+                    const order = await data.addOrder(input);
+                    setSuccess(`Draft purchase order ${order.id.slice(0, 8)} created.`);
+                    return order;
+                  }}
+                />
+              )
             ) : (
               <section className="surface p-4 text-sm text-[var(--color-muted)]">
                 Your role can view purchasing records but cannot create orders.
@@ -94,6 +120,20 @@ export default function PurchasingPage() {
           </div>
 
           <div className="space-y-4">
+            <RestockPanel
+              requests={data.restockRequests}
+              products={data.products}
+              locations={data.locations}
+              busy={data.busy}
+              canManage={data.canManage}
+              onDismiss={async (id) => {
+                await data.dismissRestock(id);
+              }}
+              onCreateOrder={(requests) => {
+                setSuccess(null);
+                setRestockSelection(requests);
+              }}
+            />
             {selectedOrder && (
               <ReceiveOrderPanel
                 key={selectedOrder.id}
@@ -104,6 +144,7 @@ export default function PurchasingPage() {
                   setSuccess(null);
                   const result = await data.receive(selectedOrder.id, input);
                   setSelectedOrderId(null);
+                  await data.refreshRestock();
                   setSuccess(
                     `Goods receipt ${result.receipt.id.slice(0, 8)} posted. Purchase order is now ${result.purchaseOrder.status.replace('_', ' ')}.`,
                   );

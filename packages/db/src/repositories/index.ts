@@ -9,4 +9,5 @@ export * from './reports/index';
 export * from './sales/index';
 export * from './session';
 export * from './store';
+export * from './sync/index';
 export * from './user';

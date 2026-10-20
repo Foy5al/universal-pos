@@ -13,6 +13,7 @@ import {
   createDrizzleSalesRepository,
   createDrizzleSessionRepository,
   createDrizzleStoreRepository,
+  createDrizzleSyncRepository,
   createDrizzleUserRepository,
   InMemoryAuthorizationRepository,
   InMemoryCatalogRepository,
@@ -26,6 +27,7 @@ import {
   InMemorySalesRepository,
   InMemorySessionRepository,
   InMemoryStoreRepository,
+  InMemorySyncRepository,
   InMemoryUserRepository,
   type CatalogSeed,
   type Database,
@@ -49,6 +51,7 @@ import { createPurchasingService } from './services/purchasing';
 import { createRegisterService } from './services/registers';
 import { createReportsService } from './services/reports';
 import { createSalesService } from './services/sales';
+import { createSyncService } from './services/sync';
 import { DefaultAuthService } from './services/authService';
 
 const DEFAULT_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -108,6 +111,14 @@ export function createMemoryDeps(seed: MemorySeed = {}): AppDeps {
     },
     seed.registerShifts,
   );
+  const salesService = createSalesService(
+    salesRepository,
+    catalogRepository.products,
+    inventoryRepository.locations,
+    registerShiftRepository,
+    refundsRepository.refunds,
+  );
+  const syncRepository = new InMemorySyncRepository();
 
   return {
     sessions: new RepositorySessionResolver({ sessions: sessionRepo, authorization, tokens }),
@@ -119,13 +130,8 @@ export function createMemoryDeps(seed: MemorySeed = {}): AppDeps {
       catalogRepository.products,
       inventoryRepository.locations,
     ),
-    sales: createSalesService(
-      salesRepository,
-      catalogRepository.products,
-      inventoryRepository.locations,
-      registerShiftRepository,
-      refundsRepository.refunds,
-    ),
+    sales: salesService,
+    sync: createSyncService(syncRepository, salesService, inventoryRepository.locations),
     registers: createRegisterService(registerRepository, registerShiftRepository),
     reports: createReportsService(
       reportsRepository,
@@ -159,6 +165,14 @@ export function createPostgresDeps(db: Database): AppDeps {
   const reportsRepository = createDrizzleReportsRepository(db);
   const registerRepository = createDrizzleRegisterRepository(db);
   const registerShiftRepository = createDrizzleRegisterShiftRepository(db);
+  const salesService = createSalesService(
+    salesRepository,
+    catalogRepository.products,
+    inventoryRepository.locations,
+    registerShiftRepository,
+    refundsRepository.refunds,
+  );
+  const syncRepository = createDrizzleSyncRepository(db);
 
   return {
     sessions: new RepositorySessionResolver({ sessions: sessionRepo, authorization, tokens }),
@@ -170,13 +184,8 @@ export function createPostgresDeps(db: Database): AppDeps {
       catalogRepository.products,
       inventoryRepository.locations,
     ),
-    sales: createSalesService(
-      salesRepository,
-      catalogRepository.products,
-      inventoryRepository.locations,
-      registerShiftRepository,
-      refundsRepository.refunds,
-    ),
+    sales: salesService,
+    sync: createSyncService(syncRepository, salesService, inventoryRepository.locations),
     registers: createRegisterService(registerRepository, registerShiftRepository),
     reports: createReportsService(
       reportsRepository,

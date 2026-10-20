@@ -17,6 +17,7 @@ export const CASHIER_A = '00000000-0000-4000-8000-0000000000a1';
 export const VIEWER_A = '00000000-0000-4000-8000-0000000000a2';
 export const CASHIER_B = '00000000-0000-4000-8000-0000000000b1';
 export const SCOPED_A = '00000000-0000-4000-8000-0000000000a3';
+export const MANAGER_A = '00000000-0000-4000-8000-0000000000a4';
 
 export const PRODUCT_A = '00000000-0000-4000-8000-0000000000f1';
 export const PRODUCT_B = '00000000-0000-4000-8000-0000000000f2';
@@ -97,6 +98,9 @@ const inventory: InventorySeed = {
 const cashierPermissions = [
   'sales:read',
   'sales:create',
+  'sync:push',
+  'sync:pull',
+  'devices:read',
   'refunds:read',
   'refunds:approve',
   'registers:read',
@@ -138,6 +142,21 @@ const principals: Principal[] = [
     organizationId: ORG_A,
     storeIds: [STORE_C],
     permissions: ['sales:read', 'reports:read'],
+  },
+  {
+    userId: MANAGER_A,
+    email: 'manager-a@example.com',
+    displayName: 'Manager A',
+    organizationId: ORG_A,
+    storeIds: [],
+    permissions: [
+      'sales:read',
+      'sync:push',
+      'sync:pull',
+      'sync:review',
+      'devices:read',
+      'devices:manage',
+    ],
   },
 ];
 

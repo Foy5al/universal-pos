@@ -9,9 +9,10 @@ import {
   currentShift,
   openShift as openShiftRequest,
 } from '../lib/api';
+import { readPosBootstrap, savePosBootstrap } from './posBootstrap';
 
 export function useRegisterShift(registers: readonly Register[], storeId: string | null) {
-  const [registerId, setRegisterId] = useState('');
+  const [registerId, setRegisterId] = useState(() => readPosBootstrap()?.registerId ?? '');
   const [shift, setShift] = useState<RegisterShift | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -24,6 +25,7 @@ export function useRegisterShift(registers: readonly Register[], storeId: string
   );
 
   useEffect(() => {
+    if (available.length === 0) return;
     if (!available.some((register) => register.id === registerId)) {
       setRegisterId(available[0]?.id ?? '');
     }
@@ -40,13 +42,20 @@ export function useRegisterShift(registers: readonly Register[], storeId: string
     setError(null);
     currentShift(registerId)
       .then((result) => {
-        if (!cancelled) setShift(result);
+        if (cancelled) return;
+        setShift(result);
+        savePosBootstrap({ registerId, shift: result });
       })
       .catch((cause) => {
-        if (!cancelled) {
-          setShift(null);
-          setError(cause instanceof Error ? cause.message : 'Could not load the shift');
+        if (cancelled) return;
+        const cached = readPosBootstrap();
+        if (cached?.registerId === registerId && cached.shift) {
+          setShift(cached.shift);
+          setError(null);
+          return;
         }
+        setShift(null);
+        setError(cause instanceof Error ? cause.message : 'Could not load the shift');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -63,6 +72,7 @@ export function useRegisterShift(registers: readonly Register[], storeId: string
     try {
       const opened = await openShiftRequest({ registerId, openingFloatMinor });
       setShift(opened);
+      savePosBootstrap({ registerId, shift: opened });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not open the shift');
     } finally {
@@ -95,6 +105,7 @@ export function useRegisterShift(registers: readonly Register[], storeId: string
     try {
       await closeShiftRequest(shift.id, { countedCashMinor, notes: notes || undefined });
       setShift(null);
+      savePosBootstrap({ registerId, shift: null });
       return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not close the shift');

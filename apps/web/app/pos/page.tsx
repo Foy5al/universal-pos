@@ -1,41 +1,59 @@
 'use client';
 
 import type { Product, Sale } from '@pos/contracts';
-import Link from 'next/link';
+import type { LocalSale } from '@pos/offline';
 import { useEffect, useMemo, useState } from 'react';
 
-import { createSale } from '../lib/api';
+import { getSale } from '../lib/api';
+import { offlineDatabase } from '../lib/offlineSync';
 import { CartPanel } from './components/CartPanel';
+import { CheckoutResult } from './components/CheckoutResult';
+import { PosHeader } from './components/PosHeader';
+import { PosToolbar } from './components/PosToolbar';
 import { ProductGrid } from './components/ProductGrid';
-import { ReceiptView } from './components/ReceiptView';
+import { RestockRequestDialog } from './components/RestockRequestDialog';
 import { ShiftPanel } from './components/ShiftPanel';
+import { SyncStatusBar } from './components/SyncStatusBar';
+import { readPosBootstrap, savePosBootstrap } from './posBootstrap';
 import {
   cartTotalMinor,
   isValidQuantity,
   lineQuantityIssue,
-  nextQuantity,
   parseTenderMinor,
   type CartLine,
 } from './types';
+import { useOfflineCheckout } from './useOfflineCheckout';
 import { usePosData } from './usePosData';
+import { useProductPicker } from './useProductPicker';
 import { useRegisterShift } from './useRegisterShift';
 
+type Receipt = { kind: 'server'; sale: Sale } | { kind: 'local'; sale: LocalSale };
+
 export default function PosPage() {
-  const [locationId, setLocationId] = useState('');
+  const [locationId, setLocationId] = useState(() => readPosBootstrap()?.locationId ?? '');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [search, setSearch] = useState('');
   const [tendered, setTendered] = useState('');
-  const [sale, setSale] = useState<Sale | null>(null);
+  const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [restockProduct, setRestockProduct] = useState<Product | null>(null);
+  const [restockNotice, setRestockNotice] = useState<string | null>(null);
 
   const data = usePosData(locationId);
   const { products, locations, registers, balances, loading, error, setError, online } = data;
+  const offline = useOfflineCheckout({ online });
+  const canRequestRestock = online && (data.user?.permissions.includes('restock:request') ?? false);
 
   useEffect(() => {
-    if (!locationId && locations.length > 0) {
+    if (locations.length === 0) return;
+    if (!locations.some((location) => location.id === locationId)) {
       setLocationId(locations[0]?.id ?? '');
     }
   }, [locationId, locations]);
+
+  useEffect(() => {
+    if (locationId) savePosBootstrap({ locationId });
+  }, [locationId]);
 
   const storeId = locations.find((location) => location.id === locationId)?.storeId ?? null;
   const shiftState = useRegisterShift(registers, storeId);
@@ -43,13 +61,14 @@ export default function PosPage() {
 
   function resetSale() {
     setCart([]);
-    setSale(null);
+    setReceipt(null);
     setTendered('');
     setError(null);
   }
 
   function changeLocation(next: string) {
     setLocationId(next);
+    setRestockNotice(null);
     resetSale();
   }
 
@@ -63,47 +82,16 @@ export default function PosPage() {
     [balances],
   );
 
-  const filteredProducts = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    if (!term) return products;
-    return products.filter(
-      (product) =>
-        product.name.toLowerCase().includes(term) ||
-        product.sku.toLowerCase().includes(term) ||
-        (product.barcode ?? '').toLowerCase() === term,
-    );
-  }, [products, search]);
-
-  function addProduct(product: Product) {
-    setSale(null);
-    const existing = cart.find((line) => line.product.id === product.id);
-    const quantity =
-      existing && isValidQuantity(existing.quantity) ? nextQuantity(existing.quantity) : '1';
-    const issue = lineQuantityIssue(quantity, stockByProduct.get(product.id), product.name);
-    if (issue) {
-      setError(issue);
-      return;
-    }
-    setError(null);
-    setCart((current) =>
-      existing
-        ? current.map((line) => (line.product.id === product.id ? { ...line, quantity } : line))
-        : [...current, { product, quantity }],
-    );
-  }
-
-  function handleScan() {
-    const term = search.trim().toLowerCase();
-    if (!term) return;
-    const match =
-      products.find((product) => (product.barcode ?? '').toLowerCase() === term) ??
-      products.find((product) => product.sku.toLowerCase() === term) ??
-      (filteredProducts.length === 1 ? filteredProducts[0] : undefined);
-    if (match) {
-      addProduct(match);
-      setSearch('');
-    }
-  }
+  const picker = useProductPicker({
+    products,
+    cart,
+    setCart,
+    setError,
+    search,
+    setSearch,
+    stockByProduct,
+    onAdd: () => setReceipt(null),
+  });
 
   const totalMinor = cartTotalMinor(cart);
   const quantitiesValid = cart.every(
@@ -114,28 +102,39 @@ export default function PosPage() {
   );
   const tenderMinor = tendered.trim() ? parseTenderMinor(tendered) : totalMinor;
   const tenderValid = tenderMinor !== null && tenderMinor >= totalMinor;
-  const canCheckout =
-    online && shift?.status === 'open' && quantitiesValid && tenderValid && totalMinor > 0;
+  const canCheckout = shift?.status === 'open' && quantitiesValid && tenderValid && totalMinor > 0;
+
+  async function showReceipt(local: LocalSale): Promise<void> {
+    if (local.serverSaleId) {
+      try {
+        const server = await getSale(local.serverSaleId);
+        setReceipt({ kind: 'server', sale: server });
+        return;
+      } catch {
+        // Keep the local receipt when the canonical sale is not reachable yet.
+      }
+    }
+    setReceipt({ kind: 'local', sale: local });
+  }
 
   async function submitSale() {
-    if (!canCheckout || !locationId || tenderMinor === null || !shift) {
+    if (!canCheckout || !shift || !locationId || tenderMinor === null) {
       setError('Open a register shift and check the cart before charging.');
       return;
     }
+    const register = registers.find((candidate) => candidate.id === shift.registerId);
     setSubmitting(true);
     setError(null);
     try {
-      const created = await createSale({
-        operationId: crypto.randomUUID(),
+      const local = await offline.checkout({
         locationId,
+        registerId: shift.registerId,
+        registerCode: register?.code ?? 'REG',
         registerShiftId: shift.id,
-        lines: cart.map((line) => ({
-          productId: line.product.id,
-          quantity: line.quantity,
-        })),
-        payments: [{ method: 'cash', tenderedMinor: tenderMinor }],
+        lines: cart.map((line) => ({ product: line.product, quantity: line.quantity })),
+        tenderedMinor: tenderMinor,
       });
-      setSale(created);
+      await showReceipt(local);
       setCart([]);
       setTendered('');
       await data.refreshBalances();
@@ -147,96 +146,49 @@ export default function PosPage() {
     }
   }
 
+  async function refreshReceipt() {
+    if (receipt?.kind !== 'local') return;
+    await offline.sync();
+    const updated = await offlineDatabase().localSales.get(receipt.sale.id);
+    if (updated) await showReceipt(updated);
+  }
+
   return (
     <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-4 p-4 lg:p-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold">Universal POS</h1>
-          <p className="text-xs text-[var(--color-muted)]">
-            {data.user
-              ? `${data.user.displayName} - ${data.user.organizationId.slice(0, 8)}`
-              : 'Loading...'}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span
-            role="status"
-            className="rounded-full border border-[var(--color-border)] px-3 py-1 text-xs font-semibold"
-          >
-            <span
-              aria-hidden="true"
-              className={`mr-2 inline-block h-2 w-2 rounded-full ${online ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-destructive)]'}`}
-            />
-            {online ? 'Online' : 'Offline - checkout paused'}
-          </span>
-          <Link href="/catalog" className="btn text-sm">
-            Catalog
-          </Link>
-          <Link href="/purchasing" className="btn text-sm">
-            Purchasing
-          </Link>
-          <Link href="/inventory" className="btn text-sm">
-            Stock
-          </Link>
-          <Link href="/reports" className="btn text-sm">
-            Reports
-          </Link>
-          <button type="button" className="btn text-sm" onClick={data.signOut}>
-            Sign out
-          </button>
-        </div>
-      </header>
+      <PosHeader
+        userLabel={
+          data.user
+            ? `${data.user.displayName} - ${data.user.organizationId.slice(0, 8)}`
+            : 'Loading...'
+        }
+        onSignOut={() => {
+          void data.signOut();
+        }}
+      />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="text-sm">
-          <span className="mr-2 text-[var(--color-muted)]">Selling from</span>
-          <select
-            className="field inline-block w-auto min-w-44"
-            value={locationId}
-            onChange={(event) => changeLocation(event.target.value)}
-            disabled={loading}
-          >
-            {locations.length === 0 && <option value="">No locations</option>}
-            {locations.map((location) => (
-              <option key={location.id} value={location.id}>
-                {location.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm">
-          <span className="mr-2 text-[var(--color-muted)]">Register</span>
-          <select
-            className="field inline-block w-auto min-w-40"
-            value={registerId}
-            onChange={(event) => changeRegister(event.target.value)}
-            disabled={loading || availableRegisters.length === 0}
-          >
-            {availableRegisters.length === 0 && <option value="">No register</option>}
-            {availableRegisters.map((register) => (
-              <option key={register.id} value={register.id}>
-                {register.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex min-w-64 flex-1 items-center gap-2 text-sm">
-          <span className="sr-only">Scan barcode or search products</span>
-          <input
-            className="field"
-            placeholder="Scan barcode or search name / SKU"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                handleScan();
-              }
-            }}
-            autoFocus
-          />
-        </label>
-      </div>
+      <SyncStatusBar
+        online={online}
+        syncing={offline.syncing}
+        summary={offline.summary}
+        lastSyncedAt={offline.lastSyncedAt}
+        error={offline.syncError}
+        onRetry={() => {
+          void offline.sync();
+        }}
+      />
+
+      <PosToolbar
+        locations={locations}
+        locationId={locationId}
+        onLocationChange={changeLocation}
+        registers={availableRegisters}
+        registerId={registerId}
+        onRegisterChange={changeRegister}
+        loading={loading}
+        search={search}
+        onSearchChange={setSearch}
+        onScan={picker.handleScan}
+      />
 
       <ShiftPanel
         shift={shift}
@@ -257,26 +209,41 @@ export default function PosPage() {
         </p>
       )}
 
+      {restockNotice && (
+        <p
+          role="status"
+          className="rounded-lg border border-[var(--color-accent)]/50 p-3 text-sm text-[var(--color-accent)]"
+        >
+          {restockNotice}
+        </p>
+      )}
+
       {loading ? (
         <p className="p-8 text-center text-sm text-[var(--color-muted)]">Loading catalog...</p>
-      ) : sale ? (
-        <ReceiptView
-          sale={sale}
+      ) : receipt ? (
+        <CheckoutResult
+          serverSale={receipt.kind === 'server' ? receipt.sale : null}
+          localSale={receipt.kind === 'local' ? receipt.sale : null}
           shiftId={shift?.status === 'open' ? shift.id : undefined}
-          onNewSale={() => setSale(null)}
+          syncing={offline.syncing}
+          onNewSale={() => setReceipt(null)}
           onRefunded={async () => {
             await data.refreshBalances();
             shiftState.refresh();
+          }}
+          onRefreshLocal={() => {
+            void refreshReceipt();
           }}
         />
       ) : (
         <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1fr_380px]">
           <section aria-label="Products" className="min-h-0">
             <ProductGrid
-              products={filteredProducts}
+              products={picker.filteredProducts}
               stockByProduct={stockByProduct}
-              onAdd={addProduct}
-              disabled={!online}
+              onAdd={picker.addProduct}
+              onRequestRestock={canRequestRestock ? setRestockProduct : undefined}
+              disabled={false}
             />
           </section>
           <CartPanel
@@ -302,6 +269,18 @@ export default function PosPage() {
             error={null}
           />
         </div>
+      )}
+
+      {restockProduct && locationId && (
+        <RestockRequestDialog
+          product={restockProduct}
+          locationId={locationId}
+          onClose={() => setRestockProduct(null)}
+          onSubmitted={(message) => {
+            setRestockProduct(null);
+            setRestockNotice(message);
+          }}
+        />
       )}
     </main>
   );

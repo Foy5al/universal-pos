@@ -9,4 +9,5 @@ export * from './refunds';
 export * from './registers';
 export * from './reports';
 export * from './sales';
+export * from './sync';
 export * from './tenant';

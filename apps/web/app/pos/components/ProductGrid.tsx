@@ -8,10 +8,17 @@ interface ProductGridProps {
   products: readonly Product[];
   stockByProduct: ReadonlyMap<string, string>;
   onAdd: (product: Product) => void;
+  onRequestRestock?: ((product: Product) => void) | undefined;
   disabled?: boolean;
 }
 
-export function ProductGrid({ products, stockByProduct, onAdd, disabled }: ProductGridProps) {
+export function ProductGrid({
+  products,
+  stockByProduct,
+  onAdd,
+  onRequestRestock,
+  disabled,
+}: ProductGridProps) {
   if (products.length === 0) {
     return (
       <p className="rounded-lg border border-dashed border-[var(--color-border)] p-6 text-sm text-[var(--color-muted)]">
@@ -25,14 +32,21 @@ export function ProductGrid({ products, stockByProduct, onAdd, disabled }: Produ
       {products.map((product) => {
         const stock = stockByProduct.get(product.id) ?? '0';
         const soldOut = Number(stock) <= 0;
+        const canRequestRestock = soldOut && onRequestRestock !== undefined;
         return (
           <li key={product.id}>
             <button
               type="button"
               className="surface flex h-full w-full min-h-24 flex-col items-start gap-1 p-3 text-left transition hover:border-[var(--color-focus)] disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => onAdd(product)}
-              disabled={disabled || soldOut}
-              aria-label={`Add ${product.name}, ${formatMinor(product.priceMinor)}${soldOut ? ', out of stock' : ''}`}
+              onClick={() =>
+                soldOut && onRequestRestock ? onRequestRestock(product) : onAdd(product)
+              }
+              disabled={disabled || (soldOut && !canRequestRestock)}
+              aria-label={
+                canRequestRestock
+                  ? `Request restock for ${product.name}, out of stock`
+                  : `Add ${product.name}, ${formatMinor(product.priceMinor)}${soldOut ? ', out of stock' : ''}`
+              }
             >
               <span className="text-sm font-semibold leading-snug">{product.name}</span>
               <span className="text-xs text-[var(--color-muted)]">{product.sku}</span>
@@ -40,7 +54,11 @@ export function ProductGrid({ products, stockByProduct, onAdd, disabled }: Produ
                 {formatMinor(product.priceMinor)}
               </span>
               <span className="text-xs text-[var(--color-muted)]">
-                {soldOut ? 'Out of stock' : `${stock} in stock`}
+                {soldOut
+                  ? canRequestRestock
+                    ? 'Out of stock - request restock'
+                    : 'Out of stock'
+                  : `${stock} in stock`}
               </span>
             </button>
           </li>

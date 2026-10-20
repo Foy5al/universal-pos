@@ -35,6 +35,8 @@ a changed decision is recorded as a new ADR that supersedes the old one.
 | [0016](0016-register-shifts-and-cash-reconciliation.md) | Register shifts and cash reconciliation      | Accepted |
 | [0017](0017-basic-cash-refunds.md)                      | Basic cash refunds                           | Accepted |
 | [0018](0018-sales-reporting-and-xz-shifts.md)           | Sales reporting and X/Z shift reports        | Accepted |
+| [0019](0019-offline-sync-and-device-enrollment.md)      | Offline sync, devices and conflict handling  | Accepted |
+| [0020](0020-restock-request-to-grn-workflow.md)         | Restock request to purchase order to GRN     | Accepted |
 
 ## Open owner decisions
 

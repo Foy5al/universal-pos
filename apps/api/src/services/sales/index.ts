@@ -2,14 +2,15 @@ import {
   page,
   type CreateRefundRequest,
   type CreateSaleRequest,
+  type OfflineSalePayload,
   type Page,
   type Refund,
   type SaleListQuery,
 } from '@pos/contracts';
 import {
-  parseScaledQuantity,
   type ProductRepository,
   type RefundRepository,
+  type RegisterShiftRecord,
   type RegisterShiftRepository,
   type SaleRecord,
   type SalesRepository,
@@ -17,14 +18,19 @@ import {
 } from '@pos/db';
 
 import { conflict, notFound, validationError } from '../../core/errors';
-
-const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
-const QUANTITY_FACTOR = 10_000n;
+import { lineTotalMinor, sumSubtotalMinor, sumTenderedMinor } from './pricing';
 
 export interface SalesService {
   list(organizationId: string, query: SaleListQuery): Promise<Page<SaleRecord>>;
   get(organizationId: string, id: string): Promise<SaleRecord>;
+  findByOperationId(organizationId: string, operationId: string): Promise<SaleRecord | null>;
   create(organizationId: string, userId: string, input: CreateSaleRequest): Promise<SaleRecord>;
+  /** Posts a sale whose line prices were captured on an offline terminal. */
+  createFromDevice(
+    organizationId: string,
+    userId: string,
+    input: Omit<OfflineSalePayload, 'provisionalNumber'> & { operationId: string },
+  ): Promise<SaleRecord>;
   refund(
     organizationId: string,
     userId: string,
@@ -33,13 +39,15 @@ export interface SalesService {
   ): Promise<Refund>;
 }
 
-/** Exact unit price times a scaled quantity, rounded half-up to minor units. */
-function lineTotalMinor(unitPriceMinor: number, scaledQuantity: bigint): number {
-  const total = (BigInt(unitPriceMinor) * scaledQuantity + 5_000n) / QUANTITY_FACTOR;
-  if (total > MAX_SAFE) {
-    throw validationError('Line total exceeds the supported money range');
+/** Maps stock/shift repository failures onto stable API errors. */
+function rethrowPostingError(error: unknown): never {
+  if (error instanceof Error && error.name === 'InsufficientStockError') {
+    throw conflict('Insufficient stock for the requested quantity');
   }
-  return Number(total);
+  if (error instanceof Error && error.name === 'RegisterShiftNotOpenError') {
+    throw conflict('Register shift is closed');
+  }
+  throw error;
 }
 
 export interface SalesServiceOptions {
@@ -64,6 +72,28 @@ export function createSalesService(
     return sale;
   }
 
+  async function requireSaleContext(
+    organizationId: string,
+    locationId: string,
+    registerShiftId: string,
+  ): Promise<RegisterShiftRecord> {
+    const location = await locations.findById(organizationId, locationId);
+    if (!location || !location.isActive) {
+      throw notFound('Stock location not found');
+    }
+    const shift = await registerShifts.findById(organizationId, registerShiftId);
+    if (!shift) {
+      throw notFound('Register shift not found');
+    }
+    if (shift.status !== 'open') {
+      throw conflict('Register shift is closed');
+    }
+    if (!location.storeId || shift.storeId !== location.storeId) {
+      throw validationError('Register shift does not belong to the selling location');
+    }
+    return shift;
+  }
+
   return {
     async list(organizationId, query) {
       const result = await repo.sales.list(
@@ -74,34 +104,20 @@ export function createSalesService(
       return page(result.items, result.total, query);
     },
     get: (organizationId, id) => requireSale(organizationId, id),
+    findByOperationId: (organizationId, operationId) =>
+      repo.sales.findByOperationId(organizationId, operationId),
     async create(organizationId, userId, input) {
-      const location = await locations.findById(organizationId, input.locationId);
-      if (!location || !location.isActive) {
-        throw notFound('Stock location not found');
-      }
-
-      const shift = await registerShifts.findById(organizationId, input.registerShiftId);
-      if (!shift) {
-        throw notFound('Register shift not found');
-      }
-      if (shift.status !== 'open') {
-        throw conflict('Register shift is closed');
-      }
-      if (!location.storeId || shift.storeId !== location.storeId) {
-        throw validationError('Register shift does not belong to the selling location');
-      }
+      const shift = await requireSaleContext(
+        organizationId,
+        input.locationId,
+        input.registerShiftId,
+      );
 
       const lines = [];
-      let subtotalMinor = 0;
       for (const line of input.lines) {
         const product = await products.findById(organizationId, line.productId);
         if (!product || !product.isActive) {
           throw notFound('Product not found');
-        }
-        const total = lineTotalMinor(product.priceMinor, parseScaledQuantity(line.quantity));
-        subtotalMinor += total;
-        if (!Number.isSafeInteger(subtotalMinor)) {
-          throw validationError('Sale total exceeds the supported money range');
         }
         lines.push({
           productId: product.id,
@@ -109,17 +125,12 @@ export function createSalesService(
           name: product.name,
           quantity: line.quantity,
           unitPriceMinor: product.priceMinor,
-          lineTotalMinor: total,
+          lineTotalMinor: lineTotalMinor(product.priceMinor, line.quantity),
         });
       }
 
-      let paidMinor = 0;
-      for (const payment of input.payments) {
-        paidMinor += payment.tenderedMinor;
-        if (!Number.isSafeInteger(paidMinor)) {
-          throw validationError('Payment total exceeds the supported money range');
-        }
-      }
+      const subtotalMinor = sumSubtotalMinor(lines.map((line) => line.lineTotalMinor));
+      const paidMinor = sumTenderedMinor(input.payments);
       if (paidMinor < subtotalMinor) {
         throw validationError('Payment is less than the sale total');
       }
@@ -144,13 +155,59 @@ export function createSalesService(
           })),
         });
       } catch (error) {
-        if (error instanceof Error && error.name === 'InsufficientStockError') {
-          throw conflict('Insufficient stock for the requested quantity');
+        rethrowPostingError(error);
+      }
+    },
+    async createFromDevice(organizationId, userId, input) {
+      const shift = await requireSaleContext(
+        organizationId,
+        input.locationId,
+        input.registerShiftId,
+      );
+
+      const lines = [];
+      for (const line of input.lines) {
+        const product = await products.findById(organizationId, line.productId);
+        if (!product || !product.isActive) {
+          throw notFound('Product not found');
         }
-        if (error instanceof Error && error.name === 'RegisterShiftNotOpenError') {
-          throw conflict('Register shift is closed');
-        }
-        throw error;
+        lines.push({
+          productId: product.id,
+          sku: product.sku,
+          name: product.name,
+          quantity: line.quantity,
+          unitPriceMinor: line.unitPriceMinor,
+          lineTotalMinor: lineTotalMinor(line.unitPriceMinor, line.quantity),
+        });
+      }
+
+      const subtotalMinor = sumSubtotalMinor(lines.map((line) => line.lineTotalMinor));
+      const paidMinor = sumTenderedMinor(input.payments);
+      if (paidMinor < subtotalMinor) {
+        throw validationError('Payment is less than the sale total');
+      }
+
+      try {
+        return await repo.sales.create({
+          organizationId,
+          locationId: input.locationId,
+          operationId: input.operationId,
+          registerShiftId: shift.id,
+          customerName: input.customerName,
+          currency,
+          subtotalMinor,
+          totalMinor: subtotalMinor,
+          paidMinor,
+          changeMinor: paidMinor - subtotalMinor,
+          createdBy: userId,
+          lines,
+          payments: input.payments.map((payment) => ({
+            method: payment.method,
+            amountMinor: payment.tenderedMinor,
+          })),
+        });
+      } catch (error) {
+        rethrowPostingError(error);
       }
     },
     async refund(organizationId, userId, saleId, input) {

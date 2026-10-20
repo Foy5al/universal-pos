@@ -8,6 +8,13 @@ import type {
   StockBalance,
   StockLocation,
 } from '@pos/contracts';
+import {
+  cacheBalances,
+  cacheProducts,
+  outboxSummary,
+  readCachedBalances,
+  readCachedProducts,
+} from '@pos/offline';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -22,6 +29,16 @@ import {
   listRegisters,
   logout,
 } from '../lib/api';
+import { clearOfflineCatalog, offlineDatabase } from '../lib/offlineSync';
+import { clearPosBootstrap, readPosBootstrap, savePosBootstrap } from './posBootstrap';
+
+function cachedBalances(
+  locationId: string,
+  quantities: Array<{ productId: string; quantity: string }>,
+) {
+  const updatedAt = new Date().toISOString();
+  return quantities.map((balance) => ({ ...balance, locationId, updatedAt }));
+}
 
 export function usePosData(locationId: string) {
   const router = useRouter();
@@ -55,13 +72,31 @@ export function usePosData(locationId: string) {
         setProducts(productPage.items);
         setLocations(locationPage.items);
         setRegisters(registerPage.items);
+        savePosBootstrap({
+          user: session.user,
+          locations: locationPage.items,
+          registers: registerPage.items,
+        });
+        await cacheProducts(offlineDatabase(), productPage.items);
       } catch (cause) {
         if (cause instanceof ApiError && cause.status === 401) {
           clearToken();
           router.replace('/login');
           return;
         }
-        if (!cancelled) setError(cause instanceof Error ? cause.message : 'Failed to load');
+        const cached = readPosBootstrap();
+        const cachedCatalog = await readCachedProducts(offlineDatabase()).catch(
+          () => [] as Product[],
+        );
+        if (!cancelled && cached?.user && cached.locations && cached.registers) {
+          setUser(cached.user);
+          setLocations(cached.locations);
+          setRegisters(cached.registers);
+          setProducts(cachedCatalog);
+          setError(null);
+        } else if (!cancelled) {
+          setError(cause instanceof Error ? cause.message : 'Failed to load');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -76,8 +111,14 @@ export function usePosData(locationId: string) {
     try {
       const result = await listBalances(locationId);
       setBalances(result.items);
+      await cacheBalances(offlineDatabase(), locationId, result.items);
     } catch {
-      setBalances([]);
+      try {
+        const cached = await readCachedBalances(offlineDatabase(), locationId);
+        setBalances(cachedBalances(locationId, cached));
+      } catch {
+        setBalances([]);
+      }
     }
   }, [locationId]);
 
@@ -88,11 +129,16 @@ export function usePosData(locationId: string) {
       return;
     }
     listBalances(locationId)
-      .then((result) => {
-        if (!cancelled) setBalances(result.items);
+      .then(async (result) => {
+        if (cancelled) return;
+        setBalances(result.items);
+        await cacheBalances(offlineDatabase(), locationId, result.items);
       })
-      .catch(() => {
-        if (!cancelled) setBalances([]);
+      .catch(async () => {
+        const cached = await readCachedBalances(offlineDatabase(), locationId).catch(
+          () => [] as Array<{ productId: string; quantity: string }>,
+        );
+        if (!cancelled) setBalances(cachedBalances(locationId, cached));
       });
     return () => {
       cancelled = true;
@@ -112,10 +158,27 @@ export function usePosData(locationId: string) {
 
   const signOut = useCallback(async () => {
     try {
+      const summary = await outboxSummary(offlineDatabase());
+      const unsynced = summary.pending + summary.retryable + summary.needsReview + summary.rejected;
+      if (unsynced > 0) {
+        setError('Sync or reconcile the queued sales before signing out.');
+        return;
+      }
+    } catch {
+      // An unavailable local store must not strand the user in the session.
+    }
+
+    try {
       await logout();
     } catch {
       // Local sign-out must still work when the API is unreachable.
     }
+    try {
+      await clearOfflineCatalog();
+    } catch {
+      // Cache cleanup is best effort.
+    }
+    clearPosBootstrap();
     clearToken();
     router.replace('/login');
   }, [router]);

@@ -7,6 +7,7 @@ import type {
   PurchaseOrder,
   PurchaseReceiveResult,
   ReceivePurchaseOrderRequest,
+  RestockRequest,
   StockLocation,
   Supplier,
 } from '@pos/contracts';
@@ -18,11 +19,13 @@ import {
   clearToken,
   createPurchaseOrder,
   createSupplier,
+  dismissRestockRequest,
   fetchSession,
   getToken,
   listLocations,
   listProducts,
   listPurchaseOrders,
+  listRestockRequests,
   listSuppliers,
   receivePurchaseOrder,
   updatePurchaseOrderStatus,
@@ -32,6 +35,7 @@ export function usePurchasing() {
   const router = useRouter();
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [orders, setOrders] = useState<PurchaseOrder[]>([]);
+  const [restockRequests, setRestockRequests] = useState<RestockRequest[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [locations, setLocations] = useState<StockLocation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,22 +55,25 @@ export function usePurchasing() {
         const session = await fetchSession(token);
         if (cancelled) return;
         setCanManage(session.user.permissions.includes('purchases:manage'));
-        const [supplierPage, orderPage, productPage, locationPage]: [
+        const [supplierPage, orderPage, productPage, locationPage, restockPage]: [
           Page<Supplier>,
           Page<PurchaseOrder>,
           Page<Product>,
           Page<StockLocation>,
+          Page<RestockRequest>,
         ] = await Promise.all([
           listSuppliers(),
           listPurchaseOrders(),
           listProducts(),
           listLocations(),
+          listRestockRequests(),
         ]);
         if (cancelled) return;
         setSuppliers(supplierPage.items);
         setOrders(orderPage.items);
         setProducts(productPage.items);
         setLocations(locationPage.items);
+        setRestockRequests(restockPage.items);
       } catch (cause) {
         if (cause instanceof ApiError && cause.status === 401) {
           clearToken();
@@ -112,14 +119,30 @@ export function usePurchasing() {
     [],
   );
 
+  const refreshRestock = useCallback(async (): Promise<void> => {
+    const result = await listRestockRequests();
+    setRestockRequests(result.items);
+  }, []);
+
+  const dismissRestock = useCallback(async (id: string): Promise<RestockRequest> => {
+    setBusy(true);
+    try {
+      const updated = await dismissRestockRequest(id);
+      setRestockRequests((current) =>
+        current.map((request) => (request.id === updated.id ? updated : request)),
+      );
+      return updated;
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   const changeStatus = useCallback(
     async (orderId: string, status: 'ordered' | 'cancelled'): Promise<PurchaseOrder> => {
       setBusy(true);
       try {
         const updated = await updatePurchaseOrderStatus(orderId, status);
-        setOrders((current) =>
-          current.map((order) => (order.id === updated.id ? updated : order)),
-        );
+        setOrders((current) => current.map((order) => (order.id === updated.id ? updated : order)));
         return updated;
       } finally {
         setBusy(false);
@@ -129,10 +152,7 @@ export function usePurchasing() {
   );
 
   const receive = useCallback(
-    async (
-      orderId: string,
-      input: ReceivePurchaseOrderRequest,
-    ): Promise<PurchaseReceiveResult> => {
+    async (orderId: string, input: ReceivePurchaseOrderRequest): Promise<PurchaseReceiveResult> => {
       setBusy(true);
       try {
         const result = await receivePurchaseOrder(orderId, input);
@@ -152,6 +172,7 @@ export function usePurchasing() {
   return {
     suppliers,
     orders,
+    restockRequests,
     products,
     locations,
     loading,
@@ -161,6 +182,8 @@ export function usePurchasing() {
     canManage,
     addSupplier,
     addOrder,
+    refreshRestock,
+    dismissRestock,
     changeStatus,
     receive,
   };

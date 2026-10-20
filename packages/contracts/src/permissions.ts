@@ -34,6 +34,7 @@ export const PERMISSION_KEYS = [
   'devices:manage',
   'sync:push',
   'sync:pull',
+  'sync:review',
   'audit:read',
 ] as const;
 
@@ -53,4 +54,3 @@ export function hasAllPermissions(
 ): boolean {
   return required.every((permission) => granted.includes(permission));
 }
-

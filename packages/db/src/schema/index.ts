@@ -6,3 +6,4 @@ export * from './purchasing';
 export * from './refunds';
 export * from './registers';
 export * from './sales';
+export * from './sync';
