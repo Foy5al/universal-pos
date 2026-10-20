@@ -16,8 +16,11 @@ export const PERMISSION_KEYS = [
   'inventory:read',
   'inventory:adjust',
   'inventory:manage',
+  'restock:request',
   'purchases:read',
   'purchases:manage',
+  'registers:read',
+  'registers:manage',
   'sales:read',
   'sales:create',
   'sales:void',
@@ -50,3 +53,4 @@ export function hasAllPermissions(
 ): boolean {
   return required.every((permission) => granted.includes(permission));
 }
+

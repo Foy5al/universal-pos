@@ -19,6 +19,7 @@
     "stack:down": "docker compose -f infra/docker-compose.yml --profile app down",
     "db:migrate": "pnpm --filter @pos/db db:migrate",
     "db:seed": "pnpm --filter @pos/db db:seed",
+    "db:seed:demo": "pnpm --filter @pos/api seed:demo",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,yml,yaml}\""
   },

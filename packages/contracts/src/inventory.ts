@@ -39,11 +39,17 @@ export const stockBalanceSchema = z.object({
 
 export type StockBalance = z.infer<typeof stockBalanceSchema>;
 
-export const STOCK_MOVEMENT_TYPES = ['adjustment', 'receipt', 'issue'] as const;
+export const STOCK_MOVEMENT_TYPES = ['adjustment', 'receipt', 'issue', 'return'] as const;
 
 export const stockMovementTypeSchema = z.enum(STOCK_MOVEMENT_TYPES);
 
 export type StockMovementType = z.infer<typeof stockMovementTypeSchema>;
+
+export const STOCK_LOSS_REASONS = ['damaged', 'defective', 'expired', 'lost', 'other'] as const;
+
+export const stockLossReasonSchema = z.enum(STOCK_LOSS_REASONS);
+
+export type StockLossReason = z.infer<typeof stockLossReasonSchema>;
 
 export const stockMovementSchema = z.object({
   id: z.uuid(),
@@ -54,6 +60,9 @@ export const stockMovementSchema = z.object({
   quantityDelta: z.string(),
   balanceAfter: z.string(),
   reason: z.string().nullable(),
+  lossReason: stockLossReasonSchema.nullable(),
+  expiresOn: z.string().nullable(),
+  unitCostMinor: z.number().int().nullable(),
   occurredAt: z.string(),
   createdAt: z.string(),
 });
@@ -71,6 +80,28 @@ export const createStockAdjustmentRequestSchema = z.object({
 });
 
 export type CreateStockAdjustmentRequest = z.infer<typeof createStockAdjustmentRequestSchema>;
+
+export const createStockLossRequestSchema = z.object({
+  locationId: resourceIdSchema,
+  productId: resourceIdSchema,
+  quantity: quantityStringSchema.refine(
+    (value) => !/^-?0(\.0+)?$/.test(value) && !value.startsWith('-'),
+    'Quantity must be greater than zero',
+  ),
+  reason: stockLossReasonSchema,
+  note: z.string().trim().max(500).optional(),
+  expiresOn: z.iso.date().optional(),
+});
+
+export type CreateStockLossRequest = z.infer<typeof createStockLossRequestSchema>;
+
+export const stockLossListQuerySchema = listQuerySchema.extend({
+  locationId: resourceIdSchema.optional(),
+  productId: resourceIdSchema.optional(),
+  reason: stockLossReasonSchema.optional(),
+});
+
+export type StockLossListQuery = z.infer<typeof stockLossListQuerySchema>;
 
 export const inventoryListQuerySchema = listQuerySchema.extend({
   locationId: resourceIdSchema.optional(),

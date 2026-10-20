@@ -17,8 +17,15 @@ COMPOSE=(docker compose -f infra/docker-compose.yml)
 
 if command -v pnpm >/dev/null 2>&1; then
   PNPM=(pnpm)
+elif command -v corepack >/dev/null 2>&1; then
+  # Turbo resolves the `pnpm` binary from PATH, so expose corepack's shims.
+  SHIM_DIR="${TMPDIR:-/tmp}/universal-pos-pnpm-shims"
+  mkdir -p "$SHIM_DIR"
+  COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack enable --install-directory "$SHIM_DIR" >/dev/null 2>&1 || true
+  export PATH="$SHIM_DIR:$PATH"
+  PNPM=(pnpm)
 else
-  PNPM=(corepack pnpm)
+  PNPM=(pnpm)
 fi
 
 log() { printf '\033[1;34m==> %s\033[0m\n' "$*"; }
@@ -85,6 +92,9 @@ log 'Applying database migrations'
 
 log 'Seeding permissions'
 "${PNPM[@]}" --filter @pos/db db:seed
+
+log 'Seeding demo owner, products and opening stock'
+"${PNPM[@]}" --filter @pos/api seed:demo
 
 log 'Starting dev servers - press Ctrl-C to stop'
 "${PNPM[@]}" dev

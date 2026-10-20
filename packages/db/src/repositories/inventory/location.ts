@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 
 import type { Database } from '../../client';
 import { stockLocations } from '../../schema/inventory';
@@ -34,6 +34,10 @@ export interface StockLocationRepository {
     options: CatalogListOptions,
   ): Promise<CatalogListResult<StockLocationRecord>>;
   findById(organizationId: string, id: string): Promise<StockLocationRecord | null>;
+  listByStoreIds(
+    organizationId: string,
+    storeIds: readonly string[],
+  ): Promise<StockLocationRecord[]>;
   create(input: CreateStockLocationInput): Promise<StockLocationRecord>;
   update(
     organizationId: string,
@@ -77,6 +81,19 @@ export class InMemoryStockLocationRepository implements StockLocationRepository 
     return (
       this.records.find((record) => record.organizationId === organizationId && record.id === id) ??
       null
+    );
+  }
+
+  async listByStoreIds(
+    organizationId: string,
+    storeIds: readonly string[],
+  ): Promise<StockLocationRecord[]> {
+    if (storeIds.length === 0) return [];
+    return this.records.filter(
+      (record) =>
+        record.organizationId === organizationId &&
+        record.storeId !== null &&
+        storeIds.includes(record.storeId),
     );
   }
 
@@ -140,6 +157,20 @@ export function createDrizzleStockLocationRepository(db: Database): StockLocatio
         .limit(1);
       const row = rows[0];
       return row ? toStockLocationRecord(row) : null;
+    },
+    async listByStoreIds(organizationId, storeIds) {
+      if (storeIds.length === 0) return [];
+      const rows = await db
+        .select()
+        .from(stockLocations)
+        .where(
+          and(
+            eq(stockLocations.organizationId, organizationId),
+            inArray(stockLocations.storeId, [...storeIds]),
+          ),
+        )
+        .orderBy(asc(stockLocations.name), asc(stockLocations.id));
+      return rows.map(toStockLocationRecord);
     },
     async create(input) {
       try {

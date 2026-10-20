@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, lte, sql, type SQL } from 'drizzle-orm';
 
 import type { Database } from '../../client';
 import { stockBalances, stockMovements } from '../../schema/inventory';
@@ -8,12 +8,24 @@ import {
   type StockFilters,
   type StockLedgerRepository,
 } from './ledger';
+import { recordMovementWithin } from './ledger.core';
 import { formatScaledQuantity, parseScaledQuantity } from './quantity';
 
 function buildMovementFilters(organizationId: string, filters: StockFilters): SQL | undefined {
   const conditions = [eq(stockMovements.organizationId, organizationId)];
   if (filters.locationId) conditions.push(eq(stockMovements.locationId, filters.locationId));
+  if (filters.locationIds) {
+    if (filters.locationIds.length === 0) return sql`false`;
+    conditions.push(inArray(stockMovements.locationId, [...filters.locationIds]));
+  }
   if (filters.productId) conditions.push(eq(stockMovements.productId, filters.productId));
+  if (filters.movementType) {
+    conditions.push(eq(stockMovements.movementType, filters.movementType));
+  }
+  if (filters.lossReason) conditions.push(eq(stockMovements.lossReason, filters.lossReason));
+  if (filters.onlyLosses) conditions.push(isNotNull(stockMovements.lossReason));
+  if (filters.from) conditions.push(gte(stockMovements.occurredAt, new Date(filters.from)));
+  if (filters.to) conditions.push(lte(stockMovements.occurredAt, new Date(filters.to)));
   return and(...conditions);
 }
 
@@ -28,6 +40,10 @@ export function createDrizzleStockLedgerRepository(db: Database): StockLedgerRep
     async listBalances(organizationId, filters, options) {
       const conditions = [eq(stockBalances.organizationId, organizationId)];
       if (filters.locationId) conditions.push(eq(stockBalances.locationId, filters.locationId));
+      if (filters.locationIds) {
+        if (filters.locationIds.length === 0) return { items: [], total: 0 };
+        conditions.push(inArray(stockBalances.locationId, [...filters.locationIds]));
+      }
       if (filters.productId) conditions.push(eq(stockBalances.productId, filters.productId));
       const where = and(...conditions);
       const rows = await db
@@ -58,68 +74,27 @@ export function createDrizzleStockLedgerRepository(db: Database): StockLedgerRep
         .where(where);
       return { items: rows.map(toStockMovementRecord), total: countRows[0]?.count ?? 0 };
     },
+    async summarizeMovements(organizationId, filters) {
+      const where = buildMovementFilters(organizationId, filters);
+      const rows = await db
+        .select({
+          count: sql<number>`count(*)::int`,
+          units: sql<string>`coalesce(sum(abs(${stockMovements.quantityDelta})), 0)::text`,
+          costValueMinor: sql<number>`coalesce(sum(round(abs(${stockMovements.quantityDelta}) * coalesce(${stockMovements.unitCostMinor}, 0))), 0)::bigint`,
+          missingCostCount: sql<number>`(count(*) filter (where ${stockMovements.unitCostMinor} is null))::int`,
+        })
+        .from(stockMovements)
+        .where(where);
+      const summary = rows[0];
+      return {
+        count: summary?.count ?? 0,
+        units: formatScaledQuantity(parseScaledQuantity(summary?.units ?? '0')),
+        costValueMinor: Number(summary?.costValueMinor ?? 0),
+        missingCostCount: summary?.missingCostCount ?? 0,
+      };
+    },
     async recordMovement(input) {
-      return db.transaction(async (tx) => {
-        const where = and(
-          eq(stockBalances.organizationId, input.organizationId),
-          eq(stockBalances.locationId, input.locationId),
-          eq(stockBalances.productId, input.productId),
-        );
-        const existingRows = await tx
-          .select()
-          .from(stockBalances)
-          .where(where)
-          .limit(1)
-          .for('update');
-        const existing = existingRows[0];
-        const next = (existing ? parseScaledQuantity(existing.quantity) : 0n) + input.quantityDelta;
-        const now = new Date();
-
-        const balanceRow = existing
-          ? (
-              await tx
-                .update(stockBalances)
-                .set({ quantity: formatScaledQuantity(next), updatedAt: now })
-                .where(eq(stockBalances.id, existing.id))
-                .returning()
-            )[0]
-          : (
-              await tx
-                .insert(stockBalances)
-                .values({
-                  organizationId: input.organizationId,
-                  locationId: input.locationId,
-                  productId: input.productId,
-                  quantity: formatScaledQuantity(next),
-                  updatedAt: now,
-                })
-                .returning()
-            )[0];
-
-        const movementRow = (
-          await tx
-            .insert(stockMovements)
-            .values({
-              organizationId: input.organizationId,
-              locationId: input.locationId,
-              productId: input.productId,
-              movementType: input.movementType,
-              quantityDelta: formatScaledQuantity(input.quantityDelta),
-              balanceAfter: formatScaledQuantity(next),
-              reason: input.reason ?? null,
-              occurredAt: input.occurredAt ?? now,
-            })
-            .returning()
-        )[0];
-
-        if (!balanceRow || !movementRow) {
-          throw new Error('Failed to record stock movement');
-        }
-        return {
-          movement: toStockMovementRecord(movementRow),
-          balance: toStockBalanceRecord(balanceRow),
-        };
-      });
+      return db.transaction((tx) => recordMovementWithin(tx, input));
     },
   };
 }

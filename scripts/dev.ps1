@@ -33,8 +33,17 @@ if (Get-Command pnpm -ErrorAction SilentlyContinue) {
   $PnpmCmd = 'pnpm'
   $PnpmPre = @()
 } elseif (Get-Command corepack -ErrorAction SilentlyContinue) {
-  $PnpmCmd = 'corepack'
-  $PnpmPre = @('pnpm')
+  # Turbo resolves the `pnpm` binary from PATH, so expose corepack's shims.
+  $ShimDir = Join-Path ([IO.Path]::GetTempPath()) 'universal-pos-pnpm-shims'
+  New-Item -ItemType Directory -Force -Path $ShimDir | Out-Null
+  $env:COREPACK_ENABLE_DOWNLOAD_PROMPT = '0'
+  & corepack enable --install-directory $ShimDir *> $null
+  if ($LASTEXITCODE -ne 0) {
+    Fail 'Failed to prepare pnpm via corepack; run `corepack enable` first'
+  }
+  $env:PATH = "$ShimDir;$env:PATH"
+  $PnpmCmd = 'pnpm'
+  $PnpmPre = @()
 } else {
   Fail 'pnpm is required; run `corepack enable` first'
 }
@@ -95,6 +104,9 @@ try {
 } catch {
   Fail "Failed to start services: $($_.Exception.Message)"
 }
+if ($LASTEXITCODE -ne 0) {
+  Fail 'Failed to start services (see the docker compose output above)'
+}
 
 Write-Log 'Waiting for Postgres to accept connections'
 $attempts = 0
@@ -118,6 +130,9 @@ Write-Log 'Applying database migrations'
 
 Write-Log 'Seeding permissions'
 & $PnpmCmd @PnpmPre --filter '@pos/db' db:seed
+
+Write-Log 'Seeding demo owner, products and opening stock'
+& $PnpmCmd @PnpmPre --filter '@pos/api' seed:demo
 
 Write-Log 'Starting dev servers - press Ctrl-C to stop'
 & $PnpmCmd @PnpmPre dev

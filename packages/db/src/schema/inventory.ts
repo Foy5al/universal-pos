@@ -1,6 +1,8 @@
 import {
   boolean,
+  date,
   index,
+  integer,
   numeric,
   pgEnum,
   pgTable,
@@ -13,7 +15,20 @@ import {
 import { products } from './catalog';
 import { organizations, stores } from './tenancy';
 
-export const stockMovementType = pgEnum('stock_movement_type', ['adjustment', 'receipt', 'issue']);
+export const stockMovementType = pgEnum('stock_movement_type', [
+  'adjustment',
+  'receipt',
+  'issue',
+  'return',
+]);
+
+export const stockLossReason = pgEnum('stock_loss_reason', [
+  'damaged',
+  'defective',
+  'expired',
+  'lost',
+  'other',
+]);
 
 export const stockLocations = pgTable(
   'stock_locations',
@@ -72,6 +87,9 @@ export const stockMovements = pgTable(
     quantityDelta: numeric('quantity_delta', { precision: 18, scale: 4 }).notNull(),
     balanceAfter: numeric('balance_after', { precision: 18, scale: 4 }).notNull(),
     reason: text('reason'),
+    lossReason: stockLossReason('loss_reason'),
+    expiresOn: date('expires_on'),
+    unitCostMinor: integer('unit_cost_minor'),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -81,6 +99,11 @@ export const stockMovements = pgTable(
       table.locationId,
       table.productId,
       table.createdAt,
+    ),
+    index('stock_movements_org_loss_reason_idx').on(
+      table.organizationId,
+      table.lossReason,
+      table.occurredAt,
     ),
   ],
 );

@@ -1,10 +1,22 @@
 import { randomUUID } from 'node:crypto';
 
+import type { StockLossReason, StockMovementType } from '@pos/contracts';
+
 import { stockBalances, stockMovements } from '../../schema/inventory';
 import type { CatalogListOptions, CatalogListResult } from '../catalog/types';
-import { formatScaledQuantity } from './quantity';
+import { formatScaledQuantity, parseScaledQuantity } from './quantity';
 
-export type StockMovementType = 'adjustment' | 'receipt' | 'issue';
+/** PostgreSQL returns `numeric` as a scale-padded string; normalise to the canonical form. */
+function formatNumeric(value: string): string {
+  return formatScaledQuantity(parseScaledQuantity(value));
+}
+
+export class InsufficientLedgerStockError extends Error {
+  constructor() {
+    super('Insufficient stock for this operation');
+    this.name = 'InsufficientLedgerStockError';
+  }
+}
 
 export interface StockBalanceRecord {
   locationId: string;
@@ -22,13 +34,37 @@ export interface StockMovementRecord {
   quantityDelta: string;
   balanceAfter: string;
   reason: string | null;
+  lossReason: StockLossReason | null;
+  expiresOn: string | null;
+  unitCostMinor: number | null;
   occurredAt: string;
   createdAt: string;
 }
 
 export interface StockFilters {
   locationId?: string | undefined;
+  locationIds?: readonly string[] | undefined;
   productId?: string | undefined;
+  movementType?: StockMovementType | undefined;
+  lossReason?: StockLossReason | undefined;
+  onlyLosses?: boolean | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+}
+
+export interface StockMovementSummary {
+  count: number;
+  units: string;
+  costValueMinor: number;
+  missingCostCount: number;
+}
+
+export function movementCostValue(quantityDelta: string, unitCostMinor: number | null): number {
+  if (unitCostMinor === null) return 0;
+  const scaled = parseScaledQuantity(quantityDelta);
+  const absolute = scaled < 0n ? -scaled : scaled;
+  const minor = (absolute * BigInt(unitCostMinor) + 5000n) / 10000n;
+  return Number(minor);
 }
 
 export interface RecordMovementInput {
@@ -39,6 +75,10 @@ export interface RecordMovementInput {
   /** Signed quantity in scaled units (1 unit = 10^4). */
   quantityDelta: bigint;
   reason?: string | undefined;
+  lossReason?: StockLossReason | undefined;
+  expiresOn?: string | undefined;
+  unitCostMinor?: number | null | undefined;
+  enforceNonNegative?: boolean | undefined;
   occurredAt?: Date | undefined;
 }
 
@@ -58,6 +98,7 @@ export interface StockLedgerRepository {
     filters: StockFilters,
     options: CatalogListOptions,
   ): Promise<CatalogListResult<StockMovementRecord>>;
+  summarizeMovements(organizationId: string, filters: StockFilters): Promise<StockMovementSummary>;
   recordMovement(input: RecordMovementInput): Promise<RecordMovementResult>;
 }
 
@@ -65,7 +106,7 @@ export function toStockBalanceRecord(row: typeof stockBalances.$inferSelect): St
   return {
     locationId: row.locationId,
     productId: row.productId,
-    quantity: row.quantity,
+    quantity: formatNumeric(row.quantity),
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -79,9 +120,12 @@ export function toStockMovementRecord(
     locationId: row.locationId,
     productId: row.productId,
     movementType: row.movementType,
-    quantityDelta: row.quantityDelta,
-    balanceAfter: row.balanceAfter,
+    quantityDelta: formatNumeric(row.quantityDelta),
+    balanceAfter: formatNumeric(row.balanceAfter),
     reason: row.reason,
+    lossReason: row.lossReason,
+    expiresOn: row.expiresOn,
+    unitCostMinor: row.unitCostMinor,
     occurredAt: row.occurredAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
   };
@@ -104,7 +148,18 @@ function matchesFilters(
   filters: StockFilters,
 ): boolean {
   if (filters.locationId && record.locationId !== filters.locationId) return false;
+  if (filters.locationIds && !filters.locationIds.includes(record.locationId)) return false;
   if (filters.productId && record.productId !== filters.productId) return false;
+  return true;
+}
+
+function matchesMovementFilters(movement: StockMovementRecord, filters: StockFilters): boolean {
+  if (!matchesFilters(movement, filters)) return false;
+  if (filters.movementType && movement.movementType !== filters.movementType) return false;
+  if (filters.lossReason && movement.lossReason !== filters.lossReason) return false;
+  if (filters.onlyLosses && movement.lossReason === null) return false;
+  if (filters.from && movement.occurredAt < filters.from) return false;
+  if (filters.to && movement.occurredAt > filters.to) return false;
   return true;
 }
 
@@ -142,7 +197,7 @@ export class InMemoryStockLedgerRepository implements StockLedgerRepository {
   ): Promise<CatalogListResult<StockMovementRecord>> {
     const scoped = this.movements
       .filter((movement) => movement.organizationId === organizationId)
-      .filter((movement) => matchesFilters(movement, filters))
+      .filter((movement) => matchesMovementFilters(movement, filters))
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
     return {
       items: scoped.slice(options.offset, options.offset + options.limit),
@@ -150,10 +205,37 @@ export class InMemoryStockLedgerRepository implements StockLedgerRepository {
     };
   }
 
+  async summarizeMovements(
+    organizationId: string,
+    filters: StockFilters,
+  ): Promise<StockMovementSummary> {
+    const scoped = this.movements
+      .filter((movement) => movement.organizationId === organizationId)
+      .filter((movement) => matchesMovementFilters(movement, filters));
+    let absolute = 0n;
+    let costValueMinor = 0;
+    let missingCostCount = 0;
+    for (const movement of scoped) {
+      const scaled = parseScaledQuantity(movement.quantityDelta);
+      absolute += scaled < 0n ? -scaled : scaled;
+      costValueMinor += movementCostValue(movement.quantityDelta, movement.unitCostMinor);
+      if (movement.unitCostMinor === null) missingCostCount += 1;
+    }
+    return {
+      count: scoped.length,
+      units: formatScaledQuantity(absolute),
+      costValueMinor,
+      missingCostCount,
+    };
+  }
+
   async recordMovement(input: RecordMovementInput): Promise<RecordMovementResult> {
     const key = balanceKey(input.locationId, input.productId);
     const existing = this.balances.get(key);
     const next = (existing?.quantity ?? 0n) + input.quantityDelta;
+    if (input.enforceNonNegative && next < 0n) {
+      throw new InsufficientLedgerStockError();
+    }
     const now = new Date();
     this.balances.set(key, {
       organizationId: input.organizationId,
@@ -172,6 +254,9 @@ export class InMemoryStockLedgerRepository implements StockLedgerRepository {
       quantityDelta: formatScaledQuantity(input.quantityDelta),
       balanceAfter: formatScaledQuantity(next),
       reason: input.reason ?? null,
+      lossReason: input.lossReason ?? null,
+      expiresOn: input.expiresOn ?? null,
+      unitCostMinor: input.unitCostMinor ?? null,
       occurredAt: (input.occurredAt ?? now).toISOString(),
       createdAt: now.toISOString(),
     };

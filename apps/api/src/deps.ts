@@ -5,6 +5,12 @@ import {
   createDrizzleCatalogRepository,
   createDrizzleInventoryRepository,
   createDrizzleMembershipRepository,
+  createDrizzlePurchasingRepository,
+  createDrizzleRefundsRepository,
+  createDrizzleRegisterRepository,
+  createDrizzleRegisterShiftRepository,
+  createDrizzleReportsRepository,
+  createDrizzleSalesRepository,
   createDrizzleSessionRepository,
   createDrizzleStoreRepository,
   createDrizzleUserRepository,
@@ -12,12 +18,23 @@ import {
   InMemoryCatalogRepository,
   InMemoryInventoryRepository,
   InMemoryMembershipRepository,
+  InMemoryPurchasingRepository,
+  InMemoryRefundsRepository,
+  InMemoryRegisterRepository,
+  InMemoryRegisterShiftRepository,
+  InMemoryReportsRepository,
+  InMemorySalesRepository,
   InMemorySessionRepository,
   InMemoryStoreRepository,
   InMemoryUserRepository,
   type CatalogSeed,
   type Database,
   type InventorySeed,
+  type PurchasingSeed,
+  type RefundsSeed,
+  type RegisterRecord,
+  type RegisterShiftSeed,
+  type SalesSeed,
   type StoreRecord,
 } from '@pos/db';
 import type { Principal } from '@pos/contracts';
@@ -28,6 +45,10 @@ import { RepositorySessionResolver } from './core/sessionResolver';
 import { OpaqueTokenService } from './core/tokenService';
 import { createCatalogService } from './services/catalog';
 import { createInventoryService } from './services/inventory';
+import { createPurchasingService } from './services/purchasing';
+import { createRegisterService } from './services/registers';
+import { createReportsService } from './services/reports';
+import { createSalesService } from './services/sales';
 import { DefaultAuthService } from './services/authService';
 
 const DEFAULT_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
@@ -40,6 +61,11 @@ export interface MemorySeed {
   organizations?: readonly OrganizationRef[];
   catalog?: CatalogSeed;
   inventory?: InventorySeed;
+  purchasing?: PurchasingSeed;
+  registers?: readonly RegisterRecord[];
+  registerShifts?: RegisterShiftSeed;
+  sales?: SalesSeed;
+  refunds?: RefundsSeed;
 }
 
 /** In-memory wiring for tests and local development without a database. */
@@ -62,12 +88,51 @@ export function createMemoryDeps(seed: MemorySeed = {}): AppDeps {
 
   const catalogRepository = new InMemoryCatalogRepository(seed.catalog);
   const inventoryRepository = new InMemoryInventoryRepository(seed.inventory);
+  const purchasingRepository = new InMemoryPurchasingRepository(
+    inventoryRepository.ledger,
+    seed.purchasing,
+  );
+  const salesRepository = new InMemorySalesRepository(inventoryRepository.ledger, seed.sales);
+  const refundsRepository = new InMemoryRefundsRepository(inventoryRepository.ledger, seed.refunds);
+  const reportsRepository = new InMemoryReportsRepository(
+    () => salesRepository.sales.snapshot(),
+    () => refundsRepository.refunds.snapshot(),
+  );
+  const registerRepository = new InMemoryRegisterRepository(seed.registers ?? []);
+  const registerShiftRepository = new InMemoryRegisterShiftRepository(
+    {
+      sumCashByShift: (organizationId, shiftId) =>
+        salesRepository.sales.sumCashByShift(organizationId, shiftId),
+      sumRefundsByShift: (organizationId, shiftId) =>
+        refundsRepository.refunds.sumByShift(organizationId, shiftId),
+    },
+    seed.registerShifts,
+  );
 
   return {
     sessions: new RepositorySessionResolver({ sessions: sessionRepo, authorization, tokens }),
     stores: new InMemoryStoreRepository(seed.stores ?? []),
     catalog: createCatalogService(catalogRepository),
     inventory: createInventoryService(inventoryRepository, catalogRepository.products),
+    purchasing: createPurchasingService(
+      purchasingRepository,
+      catalogRepository.products,
+      inventoryRepository.locations,
+    ),
+    sales: createSalesService(
+      salesRepository,
+      catalogRepository.products,
+      inventoryRepository.locations,
+      registerShiftRepository,
+      refundsRepository.refunds,
+    ),
+    registers: createRegisterService(registerRepository, registerShiftRepository),
+    reports: createReportsService(
+      reportsRepository,
+      registerShiftRepository,
+      inventoryRepository.locations,
+      inventoryRepository.ledger,
+    ),
     auth,
   };
 }
@@ -88,14 +153,36 @@ export function createPostgresDeps(db: Database): AppDeps {
   });
 
   const catalogRepository = createDrizzleCatalogRepository(db);
+  const inventoryRepository = createDrizzleInventoryRepository(db);
+  const salesRepository = createDrizzleSalesRepository(db);
+  const refundsRepository = createDrizzleRefundsRepository(db);
+  const reportsRepository = createDrizzleReportsRepository(db);
+  const registerRepository = createDrizzleRegisterRepository(db);
+  const registerShiftRepository = createDrizzleRegisterShiftRepository(db);
 
   return {
     sessions: new RepositorySessionResolver({ sessions: sessionRepo, authorization, tokens }),
     stores: createDrizzleStoreRepository(db),
     catalog: createCatalogService(catalogRepository),
-    inventory: createInventoryService(
-      createDrizzleInventoryRepository(db),
+    inventory: createInventoryService(inventoryRepository, catalogRepository.products),
+    purchasing: createPurchasingService(
+      createDrizzlePurchasingRepository(db),
       catalogRepository.products,
+      inventoryRepository.locations,
+    ),
+    sales: createSalesService(
+      salesRepository,
+      catalogRepository.products,
+      inventoryRepository.locations,
+      registerShiftRepository,
+      refundsRepository.refunds,
+    ),
+    registers: createRegisterService(registerRepository, registerShiftRepository),
+    reports: createReportsService(
+      reportsRepository,
+      registerShiftRepository,
+      inventoryRepository.locations,
+      inventoryRepository.ledger,
     ),
     auth,
   };

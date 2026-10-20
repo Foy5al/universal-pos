@@ -109,6 +109,73 @@ describeIfDatabase('inventory postgres integration', () => {
       true,
     );
 
+    const salesAreNotLosses = await inventory.ledger.listMovements(
+      organizationId,
+      { onlyLosses: true },
+      { limit: 50, offset: 0 },
+    );
+    expect(salesAreNotLosses.total).toBe(0);
+
+    const loss = await inventory.ledger.recordMovement({
+      organizationId,
+      locationId: location.id,
+      productId: product.id,
+      movementType: 'issue',
+      quantityDelta: -100_000n,
+      reason: 'Torn bag',
+      lossReason: 'damaged',
+      unitCostMinor: 42000,
+      enforceNonNegative: true,
+    });
+    expect(loss.balance.quantity).toBe('87.5');
+    expect(loss.movement).toMatchObject({
+      lossReason: 'damaged',
+      unitCostMinor: 42000,
+      quantityDelta: '-10',
+    });
+
+    const losses = await inventory.ledger.listMovements(
+      organizationId,
+      { onlyLosses: true },
+      { limit: 50, offset: 0 },
+    );
+    expect(losses.total).toBe(1);
+
+    const lossSummary = await inventory.ledger.summarizeMovements(organizationId, {
+      onlyLosses: true,
+    });
+    expect(lossSummary).toEqual({
+      count: 1,
+      units: '10',
+      costValueMinor: 420000,
+      missingCostCount: 0,
+    });
+    const receiptSummary = await inventory.ledger.summarizeMovements(organizationId, {
+      movementType: 'receipt',
+    });
+    expect(receiptSummary).toEqual({
+      count: 1,
+      units: '100',
+      costValueMinor: 0,
+      missingCostCount: 1,
+    });
+    const emptyScope = await inventory.ledger.summarizeMovements(organizationId, {
+      locationIds: [],
+    });
+    expect(emptyScope.count).toBe(0);
+
+    await expect(
+      inventory.ledger.recordMovement({
+        organizationId,
+        locationId: location.id,
+        productId: product.id,
+        movementType: 'issue',
+        quantityDelta: -1_000_000n,
+        lossReason: 'lost',
+        enforceNonNegative: true,
+      }),
+    ).rejects.toThrow('Insufficient stock');
+
     // A location cannot be read by guessing its id from another organization.
     const foreign = await inventory.locations.findById(otherOrganizationId, location.id);
     expect(foreign).toBeNull();

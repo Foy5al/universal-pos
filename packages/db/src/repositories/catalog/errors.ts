@@ -5,12 +5,16 @@ export class UniqueConstraintError extends Error {
   }
 }
 
-/** PostgreSQL unique_violation (SQLSTATE 23505). */
+/** PostgreSQL unique_violation (SQLSTATE 23505), including Drizzle's wrapped errors. */
 export function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    (error as { code?: unknown }).code === '23505'
-  );
+  let current: unknown = error;
+  for (let depth = 0; depth < 5 && current !== null && current !== undefined; depth += 1) {
+    if (typeof current === 'object' && 'code' in current) {
+      if ((current as { code?: unknown }).code === '23505') {
+        return true;
+      }
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }

@@ -10,7 +10,8 @@
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src test",
-    "test": "vitest run"
+    "test": "vitest run",
+    "seed:demo": "tsx src/seedDemo.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.2",
@@ -31,3 +32,4 @@
     "vitest": "^5.0.5"
   }
 }
+

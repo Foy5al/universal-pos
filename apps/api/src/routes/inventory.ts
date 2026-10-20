@@ -3,7 +3,9 @@ import { Router } from 'express';
 import {
   createStockAdjustmentRequestSchema,
   createStockLocationRequestSchema,
+  createStockLossRequestSchema,
   inventoryListQuerySchema,
+  stockLossListQuerySchema,
   successEnvelope,
   updateStockLocationRequestSchema,
 } from '@pos/contracts';
@@ -45,6 +47,27 @@ export function createInventoryRouter(service: InventoryService): Router {
       const principal = requirePrincipal(req);
       const query = inventoryListQuerySchema.parse(req.query);
       res.json(successEnvelope(await service.listMovements(principal.organizationId, query)));
+    }),
+  );
+
+  router.get(
+    '/inventory/losses',
+    authorize('inventory:read'),
+    asyncHandler(async (req, res) => {
+      const principal = requirePrincipal(req);
+      const query = stockLossListQuerySchema.parse(req.query);
+      res.json(successEnvelope(await service.listLosses(principal.organizationId, query)));
+    }),
+  );
+
+  router.post(
+    '/inventory/losses',
+    authorize('inventory:adjust'),
+    asyncHandler(async (req, res) => {
+      const principal = requirePrincipal(req);
+      const input = createStockLossRequestSchema.parse(req.body);
+      const result = await service.recordLoss(principal.organizationId, input);
+      res.status(201).json(successEnvelope(result));
     }),
   );
 

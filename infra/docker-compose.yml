@@ -20,10 +20,12 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:latest
+    # MinIO stopped publishing community images for anonymous pulls.
+    # Bitnami's frozen MinIO image is the drop-in local-dev substitute; the S3
+    # API is unchanged so production can use Backblaze B2 or Cloudflare R2.
+    image: bitnamilegacy/minio:2025.7.23
     container_name: universal-pos-storage
     restart: unless-stopped
-    command: server /data --console-address ':9001'
     environment:
       MINIO_ROOT_USER: pos
       MINIO_ROOT_PASSWORD: pos-secret
@@ -31,7 +33,7 @@ services:
       - '9000:9000'
       - '9001:9001'
     volumes:
-      - pos-storage-data:/data
+      - pos-storage-data:/bitnami/minio/data
     healthcheck:
       test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
       interval: 5s

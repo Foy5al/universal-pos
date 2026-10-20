@@ -22,6 +22,48 @@
       "when": 1792304966430,
       "tag": "0002_loose_tomorrow_man",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792389477143,
+      "tag": "0003_bumpy_imperial_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792480479121,
+      "tag": "0004_dashing_mother_askani",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792481870594,
+      "tag": "0005_wandering_elektra",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792483268065,
+      "tag": "0006_simple_iron_patriot",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792493299328,
+      "tag": "0007_shallow_vision",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792495824338,
+      "tag": "0008_futuristic_outlaw_kid",
+      "breakpoints": true
     }
   ]
 }

@@ -218,6 +218,83 @@ describe('inventory API', () => {
     await adjust('manager-a@example.com', '1', PRODUCT_B).expect(404);
   });
 
+  it('records a loss with its reason and removes the quantity from stock', async () => {
+    const result = await request(app)
+      .post('/v1/inventory/losses')
+      .set('authorization', auth('manager-a@example.com'))
+      .send({
+        locationId: LOCATION_A,
+        productId: PRODUCT_A,
+        quantity: '1.5',
+        reason: 'damaged',
+        note: 'Crushed during handling',
+      })
+      .expect(201);
+
+    expect(result.body.data.balance.quantity).toBe('7');
+    expect(result.body.data.movement).toEqual(
+      expect.objectContaining({
+        movementType: 'issue',
+        quantityDelta: '-1.5',
+        lossReason: 'damaged',
+        reason: 'Crushed during handling',
+        unitCostMinor: null,
+      }),
+    );
+
+    const losses = await request(app)
+      .get('/v1/inventory/losses')
+      .set('authorization', auth('clerk-a@example.com'))
+      .expect(200);
+    expect(losses.body.data.total).toBe(1);
+    expect(losses.body.data.items[0]).toEqual(
+      expect.objectContaining({ lossReason: 'damaged', quantityDelta: '-1.5' }),
+    );
+  });
+
+  it('requires an expiry date for expired stock and rejects over-removal', async () => {
+    await request(app)
+      .post('/v1/inventory/losses')
+      .set('authorization', auth('manager-a@example.com'))
+      .send({
+        locationId: LOCATION_A,
+        productId: PRODUCT_A,
+        quantity: '1',
+        reason: 'expired',
+      })
+      .expect(422);
+
+    await request(app)
+      .post('/v1/inventory/losses')
+      .set('authorization', auth('manager-a@example.com'))
+      .send({
+        locationId: LOCATION_A,
+        productId: PRODUCT_A,
+        quantity: '100',
+        reason: 'lost',
+      })
+      .expect(409);
+
+    const balances = await request(app)
+      .get(`/v1/inventory/balances?locationId=${LOCATION_A}&productId=${PRODUCT_A}`)
+      .set('authorization', auth('manager-a@example.com'))
+      .expect(200);
+    expect(balances.body.data.items[0].quantity).toBe('7');
+  });
+
+  it('denies losses to a read-only clerk', async () => {
+    await request(app)
+      .post('/v1/inventory/losses')
+      .set('authorization', auth('clerk-a@example.com'))
+      .send({
+        locationId: LOCATION_A,
+        productId: PRODUCT_A,
+        quantity: '1',
+        reason: 'defective',
+      })
+      .expect(403);
+  });
+
   it('scopes balances and movements to the caller organization', async () => {
     const balancesB = await request(app)
       .get('/v1/inventory/balances')

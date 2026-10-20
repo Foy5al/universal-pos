@@ -19,3 +19,14 @@ export function authorize(...required: Permission[]) {
     next();
   };
 }
+
+export function authorizeAny(...allowed: Permission[]) {
+  return (req: Request, _res: Response, next: NextFunction): void => {
+    const principal = requirePrincipal(req);
+    if (!allowed.some((permission) => principal.permissions.includes(permission))) {
+      next(forbidden('Missing required permission'));
+      return;
+    }
+    next();
+  };
+}
