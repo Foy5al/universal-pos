@@ -5,8 +5,12 @@ import {
   createStockLocationRequestSchema,
   createStockLossRequestSchema,
   inventoryListQuerySchema,
+  lowStockQuerySchema,
+  resourceIdSchema,
+  setProductLowStockThresholdRequestSchema,
   stockLossListQuerySchema,
   successEnvelope,
+  updateLowStockSettingsRequestSchema,
   updateStockLocationRequestSchema,
 } from '@pos/contracts';
 
@@ -27,6 +31,58 @@ export function createInventoryRouter(service: InventoryService): Router {
     createCrudRouter('/inventory/locations', service.locations, locationPermissions, {
       create: createStockLocationRequestSchema,
       update: updateStockLocationRequestSchema,
+    }),
+  );
+
+  router.get(
+    '/inventory/low-stock/settings',
+    authorize('inventory:read'),
+    asyncHandler(async (req, res) => {
+      const principal = requirePrincipal(req);
+      res.json(successEnvelope(await service.lowStock.getSettings(principal.organizationId)));
+    }),
+  );
+
+  router.put(
+    '/inventory/low-stock/settings',
+    authorize('inventory:manage'),
+    asyncHandler(async (req, res) => {
+      const principal = requirePrincipal(req);
+      const input = updateLowStockSettingsRequestSchema.parse(req.body);
+      res.json(
+        successEnvelope(
+          await service.lowStock.updateSettings(principal.organizationId, input.globalThreshold),
+        ),
+      );
+    }),
+  );
+
+  router.put(
+    '/inventory/low-stock/products/:productId',
+    authorize('inventory:manage'),
+    asyncHandler(async (req, res) => {
+      const principal = requirePrincipal(req);
+      const productId = resourceIdSchema.parse(req.params.productId);
+      const input = setProductLowStockThresholdRequestSchema.parse(req.body);
+      res.json(
+        successEnvelope(
+          await service.lowStock.setProductThreshold(
+            principal.organizationId,
+            productId,
+            input.threshold,
+          ),
+        ),
+      );
+    }),
+  );
+
+  router.get(
+    '/inventory/low-stock',
+    authorize('inventory:read'),
+    asyncHandler(async (req, res) => {
+      const principal = requirePrincipal(req);
+      const query = lowStockQuerySchema.parse(req.query);
+      res.json(successEnvelope(await service.lowStock.list(principal, query)));
     }),
   );
 

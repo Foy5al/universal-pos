@@ -101,19 +101,83 @@ describeIfDatabase('sync postgres integration', () => {
     ).toHaveLength(0);
     expect(await sync.listOperationsAfter(other.organizationId, deviceId, 0, 10)).toHaveLength(0);
 
+    const cashierId = crypto.randomUUID();
+    await db.insert(schema.users).values({
+      id: cashierId,
+      email: `cashier-${cashierId.slice(0, 8)}@example.com`,
+      passwordHash: 'not-used',
+      displayName: 'Cashier',
+    });
+
     const conflictInput = {
       organizationId,
       deviceId,
       operationId,
       entityId: input.entityId,
+      cashierId,
       reason: 'insufficient_stock',
       details: 'Insufficient stock',
+      payload: {
+        locationId: other.storeId,
+        registerShiftId: crypto.randomUUID(),
+        provisionalNumber: 'OFF-A1-1',
+        lines: [{ productId: crypto.randomUUID(), quantity: '2', unitPriceMinor: 1000 }],
+        payments: [{ method: 'cash' as const, tenderedMinor: 2500 }],
+      },
     };
     const conflict = await sync.recordConflict(conflictInput);
     const duplicate = await sync.recordConflict(conflictInput);
     expect(duplicate.id).toBe(conflict.id);
+    expect(duplicate.cashierId).toBe(cashierId);
+    expect(duplicate.payload?.provisionalNumber).toBe('OFF-A1-1');
     expect(await sync.listConflicts(organizationId, 10)).toHaveLength(1);
     expect(await sync.listConflicts(other.organizationId, 10)).toHaveLength(0);
+    expect(await sync.findConflict(other.organizationId, conflict.id)).toBeNull();
+
+    const userId = crypto.randomUUID();
+    await db.insert(schema.users).values({
+      id: userId,
+      email: `reviewer-${userId.slice(0, 8)}@example.com`,
+      passwordHash: 'not-used',
+      displayName: 'Reviewer',
+    });
+    const resolved = await sync.resolveConflict(organizationId, conflict.id, {
+      resolution: 'dismissed',
+      resolutionNote: 'Cash refunded',
+      resolvedBy: userId,
+      resolvedAt: '2026-10-20T11:00:00.000Z',
+    });
+    expect(resolved).toMatchObject({
+      status: 'resolved',
+      resolution: 'dismissed',
+      resolvedBy: userId,
+    });
+    expect(
+      await sync.resolveConflict(organizationId, conflict.id, {
+        resolution: 'retried',
+        resolutionNote: null,
+        resolvedBy: userId,
+        resolvedAt: '2026-10-20T11:01:00.000Z',
+      }),
+    ).toBeNull();
+    expect(
+      await sync.resolveConflict(other.organizationId, conflict.id, {
+        resolution: 'dismissed',
+        resolutionNote: null,
+        resolvedBy: userId,
+        resolvedAt: '2026-10-20T11:01:00.000Z',
+      }),
+    ).toBeNull();
+
+    const rejected = await sync.resolveOperation(organizationId, operationId, {
+      status: 'rejected',
+      conflictReason: 'rejected_operation',
+      message: 'Cash refunded',
+    });
+    expect(rejected).toMatchObject({ status: 'rejected', saleId: null });
+    expect(
+      await sync.resolveOperation(other.organizationId, operationId, { status: 'rejected' }),
+    ).toBeNull();
 
     const revoked = await sync.revokeDevice(organizationId, deviceId);
     expect(revoked?.revokedAt).not.toBeNull();

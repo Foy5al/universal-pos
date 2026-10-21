@@ -120,14 +120,35 @@ export const syncPushResponseSchema = z.object({
 
 export type SyncPushResponse = z.infer<typeof syncPushResponseSchema>;
 
+export const SYNC_CONFLICT_STATUSES = ['open', 'resolved'] as const;
+
+export const syncConflictStatusSchema = z.enum(SYNC_CONFLICT_STATUSES);
+
+export type SyncConflictStatus = z.infer<typeof syncConflictStatusSchema>;
+
+export const SYNC_CONFLICT_RESOLUTIONS = ['retried', 'dismissed'] as const;
+
+export const syncConflictResolutionSchema = z.enum(SYNC_CONFLICT_RESOLUTIONS);
+
+export type SyncConflictResolution = z.infer<typeof syncConflictResolutionSchema>;
+
 export const syncConflictSchema = z.object({
   id: z.uuid(),
   organizationId: z.uuid(),
   operationId: z.uuid(),
   deviceId: z.uuid(),
+  /** Cashier who captured the sale, retained when a manager retries the posting. */
+  cashierId: z.uuid().nullable(),
   entityId: z.uuid(),
   reason: z.string(),
   details: z.string().nullable(),
+  /** Captured terminal payload; null for conflicts recorded before payload storage. */
+  payload: offlineSalePayloadSchema.nullable(),
+  status: syncConflictStatusSchema,
+  resolution: syncConflictResolutionSchema.nullable(),
+  resolutionNote: z.string().nullable(),
+  resolvedAt: z.string().nullable(),
+  resolvedBy: z.uuid().nullable(),
   createdAt: z.string(),
 });
 
@@ -138,6 +159,30 @@ export const SYNC_CONFLICT_REASONS = ['insufficient_stock', 'rejected_operation'
 export const syncConflictReasonSchema = z.enum(SYNC_CONFLICT_REASONS);
 
 export type SyncConflictReason = z.infer<typeof syncConflictReasonSchema>;
+
+/**
+ * Dismissing a conflict is a financial decision (the cashier already took
+ * payment), so the reviewer must record why the sale was not posted (plan §5).
+ */
+export const resolveSyncConflictRequestSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('retry'),
+    note: z.string().trim().max(500).optional(),
+  }),
+  z.object({
+    action: z.literal('dismiss'),
+    note: z.string().trim().min(3, 'Explain how the cash sale was settled').max(500),
+  }),
+]);
+
+export type ResolveSyncConflictRequest = z.infer<typeof resolveSyncConflictRequestSchema>;
+
+export const resolveSyncConflictResponseSchema = z.object({
+  conflict: syncConflictSchema,
+  sale: saleSchema.nullable(),
+});
+
+export type ResolveSyncConflictResponse = z.infer<typeof resolveSyncConflictResponseSchema>;
 
 export const syncPullQuerySchema = z.object({
   deviceId: resourceIdSchema,

@@ -28,6 +28,7 @@ import {
   listProducts,
   listUnits,
 } from '../lib/api';
+import { fetchLowStock, saveProductLowStockThreshold } from '../inventory/lowStockApi';
 import type { AddProductResult, NewProductInput } from './types';
 
 export function useCatalog(locationId: string) {
@@ -44,6 +45,9 @@ export function useCatalog(locationId: string) {
   const [error, setError] = useState<string | null>(null);
   const [canManage, setCanManage] = useState(false);
   const [canAdjust, setCanAdjust] = useState(false);
+  const [canManageThresholds, setCanManageThresholds] = useState(false);
+  const [productThresholds, setProductThresholds] = useState<Record<string, string>>({});
+  const [globalThreshold, setGlobalThreshold] = useState<string | null>(null);
 
   useEffect(() => {
     const token = getToken();
@@ -58,6 +62,22 @@ export function useCatalog(locationId: string) {
         if (cancelled) return;
         setCanManage(session.user.permissions.includes('catalog:manage'));
         setCanAdjust(session.user.permissions.includes('inventory:adjust'));
+        setCanManageThresholds(session.user.permissions.includes('inventory:manage'));
+        if (session.user.permissions.includes('inventory:read')) {
+          fetchLowStock()
+            .then((overview) => {
+              if (cancelled) return;
+              setGlobalThreshold(overview.globalThreshold);
+              setProductThresholds(
+                Object.fromEntries(
+                  overview.productThresholds.map((entry) => [entry.productId, entry.threshold]),
+                ),
+              );
+            })
+            .catch(() => {
+              // Catalog editing still works when low stock settings are unavailable.
+            });
+        }
         const [productPage, categoryPage, brandPage, unitPage, locationPage]: [
           Page<Product>,
           Page<Category>,
@@ -163,6 +183,20 @@ export function useCatalog(locationId: string) {
       );
 
       let stockWarning: string | null = null;
+      if (input.lowStockThreshold) {
+        try {
+          const saved = await saveProductLowStockThreshold(product.id, input.lowStockThreshold);
+          const threshold = saved.threshold;
+          if (threshold !== null) {
+            setProductThresholds((current) => ({ ...current, [product.id]: threshold }));
+          }
+        } catch (cause) {
+          stockWarning =
+            cause instanceof Error
+              ? `Product saved, but the low stock alert failed: ${cause.message}`
+              : 'Product saved, but the low stock alert failed.';
+        }
+      }
       if (input.openingQuantity && locationId) {
         try {
           await createStockAdjustment({
@@ -185,6 +219,20 @@ export function useCatalog(locationId: string) {
     }
   }
 
+  async function saveThreshold(productId: string, threshold: string | null) {
+    const result = await saveProductLowStockThreshold(productId, threshold);
+    setProductThresholds((current) => {
+      const next = { ...current };
+      if (result.threshold === null) {
+        delete next[productId];
+      } else {
+        next[productId] = result.threshold;
+      }
+      return next;
+    });
+    return result;
+  }
+
   return {
     products,
     categories,
@@ -198,7 +246,11 @@ export function useCatalog(locationId: string) {
     error,
     canManage,
     canAdjust,
+    canManageThresholds,
+    productThresholds,
+    globalThreshold,
     addBrand,
     addProduct,
+    saveThreshold,
   };
 }

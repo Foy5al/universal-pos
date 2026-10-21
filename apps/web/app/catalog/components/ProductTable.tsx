@@ -7,6 +7,9 @@ interface ProductTableProps {
   products: readonly Product[];
   brands: readonly Brand[];
   stockByProduct: ReadonlyMap<string, string>;
+  thresholds: Readonly<Record<string, string>>;
+  canManageThresholds: boolean;
+  onEditThreshold: (product: Product) => void;
   search: string;
   onSearch: (value: string) => void;
   brandFilterId: string | null;
@@ -18,6 +21,9 @@ export function ProductTable({
   products,
   brands,
   stockByProduct,
+  thresholds,
+  canManageThresholds,
+  onEditThreshold,
   search,
   onSearch,
   brandFilterId,
@@ -82,7 +88,7 @@ export function ProductTable({
         </p>
       ) : (
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className="w-full min-w-[720px] text-sm">
             <caption className="sr-only">Product catalog</caption>
             <thead>
               <tr className="border-b border-[var(--color-border)] text-left text-xs text-[var(--color-muted)]">
@@ -91,12 +97,14 @@ export function ProductTable({
                 <th className="px-2 py-2 text-right font-medium">Price</th>
                 <th className="px-2 py-2 text-right font-medium">Cost</th>
                 <th className="px-2 py-2 text-right font-medium">Stock</th>
+                <th className="px-2 py-2 text-right font-medium">Low stock</th>
                 <th className="px-2 py-2 text-right font-medium">Status</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((product) => {
                 const stock = stockByProduct.get(product.id);
+                const threshold = thresholds[product.id];
                 return (
                   <tr
                     key={product.id}
@@ -119,6 +127,22 @@ export function ProductTable({
                       {product.costMinor === null ? '—' : formatMinor(product.costMinor)}
                     </td>
                     <td className="px-2 py-2.5 text-right tabular-nums">{stock ?? '—'}</td>
+                    <td className="px-2 py-2.5 text-right">
+                      <span
+                        className={threshold ? 'tabular-nums' : 'text-xs text-[var(--color-muted)]'}
+                      >
+                        {threshold ? `Below ${threshold}` : 'Global'}
+                      </span>
+                      {canManageThresholds && (
+                        <button
+                          type="button"
+                          className="ml-2 text-xs underline"
+                          onClick={() => onEditThreshold(product)}
+                        >
+                          Edit
+                        </button>
+                      )}
+                    </td>
                     <td className="px-2 py-2.5 text-right">
                       <span
                         className={

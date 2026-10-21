@@ -1,70 +1,19 @@
-import { and, asc, desc, eq, gt } from 'drizzle-orm';
+import { and, asc, eq, gt } from 'drizzle-orm';
 
 import type { Database } from '../../client';
-import { syncConflicts, syncOperations } from '../../schema/sync';
+import { syncOperations } from '../../schema/sync';
 import { devices } from '../../schema/tenancy';
 import { isUniqueViolation } from '../catalog/errors';
+import { createConflictQueries } from './conflicts.drizzle';
+import { toDeviceRecord, toOperationRecord, type DeviceRow, type OperationRow } from './mappers';
 import {
   DeviceOwnershipConflictError,
   type DeviceRecord,
-  type RecordSyncConflictInput,
   type RecordSyncOperationInput,
   type RegisterDeviceInput,
-  type SyncConflictRecord,
-  type SyncOperationRecord,
+  type ResolveSyncOperationInput,
   type SyncRepository,
 } from './types';
-
-type DeviceRow = typeof devices.$inferSelect;
-type OperationRow = typeof syncOperations.$inferSelect;
-type ConflictRow = typeof syncConflicts.$inferSelect;
-
-function toDeviceRecord(row: DeviceRow): DeviceRecord {
-  return {
-    id: row.id,
-    organizationId: row.organizationId,
-    storeId: row.storeId,
-    registerId: row.registerId,
-    name: row.name,
-    platform: row.platform,
-    isActive: row.isActive,
-    createdAt: row.createdAt.toISOString(),
-    lastSeenAt: row.lastSeenAt?.toISOString() ?? null,
-    revokedAt: row.revokedAt?.toISOString() ?? null,
-  };
-}
-
-function toOperationRecord(row: OperationRow): SyncOperationRecord {
-  return {
-    sequence: row.sequence,
-    organizationId: row.organizationId,
-    deviceId: row.deviceId,
-    operationId: row.operationId,
-    entityId: row.entityId,
-    entityType: row.entityType,
-    eventType: row.eventType,
-    clientSequence: row.clientSequence,
-    status: row.status,
-    saleId: row.saleId,
-    conflictReason: row.conflictReason,
-    message: row.message,
-    occurredAt: row.occurredAt.toISOString(),
-    receivedAt: row.receivedAt.toISOString(),
-  };
-}
-
-function toConflictRecord(row: ConflictRow): SyncConflictRecord {
-  return {
-    id: row.id,
-    organizationId: row.organizationId,
-    deviceId: row.deviceId,
-    operationId: row.operationId,
-    entityId: row.entityId,
-    reason: row.reason,
-    details: row.details,
-    createdAt: row.createdAt.toISOString(),
-  };
-}
 
 export function createDrizzleSyncRepository(db: Database): SyncRepository {
   async function findDeviceRow(organizationId: string, id: string): Promise<DeviceRow | null> {
@@ -140,6 +89,7 @@ export function createDrizzleSyncRepository(db: Database): SyncRepository {
   }
 
   return {
+    ...createConflictQueries(db),
     registerDevice,
 
     async findDevice(organizationId, id) {
@@ -220,61 +170,24 @@ export function createDrizzleSyncRepository(db: Database): SyncRepository {
       return rows.map(toOperationRecord);
     },
 
-    async recordConflict(input: RecordSyncConflictInput) {
-      const existing = await db
-        .select()
-        .from(syncConflicts)
+    async resolveOperation(organizationId, operationId, input: ResolveSyncOperationInput) {
+      const rows = await db
+        .update(syncOperations)
+        .set({
+          status: input.status,
+          saleId: input.saleId ?? null,
+          conflictReason: input.conflictReason ?? null,
+          message: input.message ?? null,
+        })
         .where(
           and(
-            eq(syncConflicts.organizationId, input.organizationId),
-            eq(syncConflicts.operationId, input.operationId),
+            eq(syncOperations.organizationId, organizationId),
+            eq(syncOperations.operationId, operationId),
           ),
         )
-        .limit(1);
-      const found = existing[0];
-      if (found) return toConflictRecord(found);
-
-      try {
-        const rows = await db
-          .insert(syncConflicts)
-          .values({
-            organizationId: input.organizationId,
-            deviceId: input.deviceId,
-            operationId: input.operationId,
-            entityId: input.entityId,
-            reason: input.reason,
-            details: input.details ?? null,
-          })
-          .returning();
-        const row = rows[0];
-        if (!row) throw new Error('Failed to record sync conflict');
-        return toConflictRecord(row);
-      } catch (error) {
-        if (!isUniqueViolation(error)) throw error;
-        const rows = await db
-          .select()
-          .from(syncConflicts)
-          .where(
-            and(
-              eq(syncConflicts.organizationId, input.organizationId),
-              eq(syncConflicts.operationId, input.operationId),
-            ),
-          )
-          .limit(1);
-        const row = rows[0];
-        if (!row) throw error;
-        return toConflictRecord(row);
-      }
-    },
-
-    async listConflicts(organizationId, limit) {
-      const rows = await db
-        .select()
-        .from(syncConflicts)
-        .where(eq(syncConflicts.organizationId, organizationId))
-        .orderBy(desc(syncConflicts.createdAt), desc(syncConflicts.id))
-        .limit(limit);
-      return rows.map(toConflictRecord);
+        .returning();
+      const row = rows[0];
+      return row ? toOperationRecord(row) : null;
     },
   };
 }

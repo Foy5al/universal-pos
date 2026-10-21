@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { PERMISSION_KEYS } from '@pos/contracts';
 
 import { createDb, type Database } from './client';
+import { loadRootEnv } from './env';
 import { permissions } from './schema/identity';
 
 export async function seedPermissions(db: Database): Promise<number> {
@@ -14,6 +15,7 @@ export async function seedPermissions(db: Database): Promise<number> {
 }
 
 async function main(): Promise<void> {
+  loadRootEnv();
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     throw new Error('DATABASE_URL is required to run the seed script');

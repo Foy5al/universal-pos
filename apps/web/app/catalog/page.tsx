@@ -1,17 +1,20 @@
 'use client';
 
+import type { Product } from '@pos/contracts';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 
 import { AddProductForm } from './components/AddProductForm';
 import { BrandManager } from './components/BrandManager';
 import { ProductTable } from './components/ProductTable';
+import { ProductThresholdDialog } from './components/ProductThresholdDialog';
 import { useCatalog } from './useCatalog';
 
 export default function CatalogPage() {
   const [locationId, setLocationId] = useState('');
   const [search, setSearch] = useState('');
   const [brandFilterId, setBrandFilterId] = useState<string | null>(null);
+  const [thresholdProduct, setThresholdProduct] = useState<Product | null>(null);
   const catalog = useCatalog(locationId);
 
   useEffect(() => {
@@ -48,6 +51,9 @@ export default function CatalogPage() {
           </Link>
           <Link href="/reports" className="btn text-sm">
             Reports
+          </Link>
+          <Link href="/settings" className="btn text-sm">
+            Settings
           </Link>
         </div>
       </header>
@@ -113,6 +119,9 @@ export default function CatalogPage() {
           products={catalog.products}
           brands={catalog.brands}
           stockByProduct={stockByProduct}
+          thresholds={catalog.productThresholds}
+          canManageThresholds={catalog.canManageThresholds}
+          onEditThreshold={setThresholdProduct}
           search={search}
           onSearch={setSearch}
           brandFilterId={brandFilterId}
@@ -120,6 +129,17 @@ export default function CatalogPage() {
           error={null}
         />
       </div>
+
+      {thresholdProduct && (
+        <ProductThresholdDialog
+          key={thresholdProduct.id}
+          product={thresholdProduct}
+          threshold={catalog.productThresholds[thresholdProduct.id] ?? null}
+          globalThreshold={catalog.globalThreshold}
+          onSave={catalog.saveThreshold}
+          onClose={() => setThresholdProduct(null)}
+        />
+      )}
     </main>
   );
 }

@@ -109,3 +109,78 @@ export const inventoryListQuerySchema = listQuerySchema.extend({
 });
 
 export type InventoryListQuery = z.infer<typeof inventoryListQuerySchema>;
+
+/** Thresholds are quantities, so they keep exact decimal precision like stock. */
+export const lowStockThresholdSchema = quantityStringSchema.refine(
+  (value) => !value.startsWith('-'),
+  'Low stock threshold must be zero or more',
+);
+
+export const lowStockSettingsSchema = z.object({
+  organizationId: z.uuid(),
+  globalThreshold: z.string().nullable(),
+  updatedAt: z.string().nullable(),
+});
+
+export type LowStockSettings = z.infer<typeof lowStockSettingsSchema>;
+
+export const updateLowStockSettingsRequestSchema = z.object({
+  globalThreshold: lowStockThresholdSchema.nullable(),
+});
+
+export type UpdateLowStockSettingsRequest = z.infer<typeof updateLowStockSettingsRequestSchema>;
+
+export const LOW_STOCK_SOURCES = ['product', 'global'] as const;
+
+export const lowStockSourceSchema = z.enum(LOW_STOCK_SOURCES);
+
+export type LowStockSource = z.infer<typeof lowStockSourceSchema>;
+
+export const lowStockAlertSchema = z.object({
+  productId: z.uuid(),
+  name: z.string(),
+  sku: z.string(),
+  onHand: z.string(),
+  threshold: z.string(),
+  source: lowStockSourceSchema,
+});
+
+export type LowStockAlert = z.infer<typeof lowStockAlertSchema>;
+
+export const productLowStockThresholdSchema = z.object({
+  productId: z.uuid(),
+  threshold: z.string(),
+});
+
+export type ProductLowStockThreshold = z.infer<typeof productLowStockThresholdSchema>;
+
+export const lowStockOverviewSchema = z.object({
+  locationId: z.uuid().nullable(),
+  globalThreshold: z.string().nullable(),
+  items: z.array(lowStockAlertSchema),
+  /** Product-level overrides currently configured, even when stock is healthy. */
+  productThresholds: z.array(productLowStockThresholdSchema),
+});
+
+export type LowStockOverview = z.infer<typeof lowStockOverviewSchema>;
+
+export const lowStockQuerySchema = z.object({ locationId: resourceIdSchema.optional() });
+
+export type LowStockQuery = z.infer<typeof lowStockQuerySchema>;
+
+export const setProductLowStockThresholdRequestSchema = z.object({
+  threshold: lowStockThresholdSchema.nullable(),
+});
+
+export type SetProductLowStockThresholdRequest = z.infer<
+  typeof setProductLowStockThresholdRequestSchema
+>;
+
+export const setProductLowStockThresholdResultSchema = z.object({
+  productId: z.uuid(),
+  threshold: z.string().nullable(),
+});
+
+export type SetProductLowStockThresholdResult = z.infer<
+  typeof setProductLowStockThresholdResultSchema
+>;

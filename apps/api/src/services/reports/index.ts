@@ -1,5 +1,7 @@
 import type {
   Principal,
+  ReportExportKind,
+  ReportExportQuery,
   ReportRangeQuery,
   SalesSummary,
   ShiftReport,
@@ -14,6 +16,8 @@ import type {
 
 import { notFound, validationError } from '../../core/errors';
 import { hasStoreScope } from '../../core/principal';
+import type { ReportDocument } from '../../exports/tabular';
+import { salesSummaryDocument, storeActivityDocument } from './exportDocument';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_RANGE_DAYS = 366;
@@ -22,6 +26,11 @@ export interface ReportsService {
   salesSummary(principal: Principal, query: ReportRangeQuery): Promise<SalesSummary>;
   storeActivity(principal: Principal, query: ReportRangeQuery): Promise<StoreActivity>;
   shiftReport(principal: Principal, shiftId: string): Promise<ShiftReport>;
+  exportReport(
+    principal: Principal,
+    kind: ReportExportKind,
+    query: ReportExportQuery,
+  ): Promise<ReportDocument>;
 }
 
 export interface ReportsServiceOptions {
@@ -109,6 +118,45 @@ export function createReportsService(
     };
   }
 
+  async function buildStoreActivity(
+    principal: Principal,
+    query: ReportRangeQuery,
+    range: { start: string; end: string },
+    locationIds: string[] | undefined,
+  ): Promise<StoreActivity> {
+    const sales = await buildSalesSummary(principal, query, range, locationIds);
+    const [losses, receiving] = await Promise.all([
+      ledger.summarizeMovements(principal.organizationId, {
+        from: range.start,
+        to: range.end,
+        locationIds,
+        onlyLosses: true,
+      }),
+      ledger.summarizeMovements(principal.organizationId, {
+        from: range.start,
+        to: range.end,
+        locationIds,
+        movementType: 'receipt',
+      }),
+    ]);
+    return {
+      from: range.start,
+      to: range.end,
+      locationId: query.locationId ?? null,
+      sales: {
+        saleCount: sales.saleCount,
+        refundCount: sales.refundCount,
+        grossSalesMinor: sales.grossSalesMinor,
+        refundsMinor: sales.refundsMinor,
+        netSalesMinor: sales.netSalesMinor,
+        averageSaleMinor: sales.averageSaleMinor,
+        unitsSold: sales.unitsSold,
+      },
+      losses,
+      receiving,
+    };
+  }
+
   return {
     async salesSummary(principal, query) {
       const range = resolveRange(query);
@@ -119,37 +167,25 @@ export function createReportsService(
     async storeActivity(principal, query) {
       const range = resolveRange(query);
       const locationIds = await resolveLocationIds(principal, query.locationId);
-      const sales = await buildSalesSummary(principal, query, range, locationIds);
-      const [losses, receiving] = await Promise.all([
-        ledger.summarizeMovements(principal.organizationId, {
-          from: range.start,
-          to: range.end,
-          locationIds,
-          onlyLosses: true,
-        }),
-        ledger.summarizeMovements(principal.organizationId, {
-          from: range.start,
-          to: range.end,
-          locationIds,
-          movementType: 'receipt',
-        }),
-      ]);
-      return {
+      return buildStoreActivity(principal, query, range, locationIds);
+    },
+
+    async exportReport(principal, kind, query) {
+      const range = resolveRange(query);
+      const locationIds = await resolveLocationIds(principal, query.locationId);
+      const context = {
+        organizationId: principal.organizationId,
+        email: principal.email,
         from: range.start,
         to: range.end,
-        locationId: query.locationId ?? null,
-        sales: {
-          saleCount: sales.saleCount,
-          refundCount: sales.refundCount,
-          grossSalesMinor: sales.grossSalesMinor,
-          refundsMinor: sales.refundsMinor,
-          netSalesMinor: sales.netSalesMinor,
-          averageSaleMinor: sales.averageSaleMinor,
-          unitsSold: sales.unitsSold,
-        },
-        losses,
-        receiving,
+        locationLabel: query.locationId ?? 'All locations in scope',
       };
+      if (kind === 'store-activity') {
+        const activity = await buildStoreActivity(principal, query, range, locationIds);
+        return storeActivityDocument(activity, context);
+      }
+      const summary = await buildSalesSummary(principal, query, range, locationIds);
+      return salesSummaryDocument(summary, context);
     },
 
     async shiftReport(principal, shiftId) {

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 import { DailySalesTable } from './components/DailySalesTable';
+import { ExportActions } from './components/ExportActions';
 import { ShiftReportPanel } from './components/ShiftReportPanel';
 import { StoreActivityCards } from './components/StoreActivityCards';
 import { SummaryCards } from './components/SummaryCards';
@@ -39,6 +40,9 @@ export default function ReportsPage() {
           </Link>
           <Link href="/inventory" className="btn text-sm">
             Stock
+          </Link>
+          <Link href="/settings" className="btn text-sm">
+            Settings
           </Link>
         </div>
       </header>
@@ -113,6 +117,7 @@ export default function ReportsPage() {
             </p>
           )}
           {activity.activity && <StoreActivityCards activity={activity.activity} />}
+          <ExportActions from={range.applied.from} to={range.applied.to} />
           <DailySalesTable days={range.summary.days} />
         </>
       ) : null}

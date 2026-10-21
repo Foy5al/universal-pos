@@ -6,6 +6,8 @@ import {
   type RecordSyncConflictInput,
   type RecordSyncOperationInput,
   type RegisterDeviceInput,
+  type ResolveSyncConflictInput,
+  type ResolveSyncOperationInput,
   type SyncConflictRecord,
   type SyncOperationRecord,
   type SyncRepository,
@@ -156,12 +158,26 @@ export class InMemorySyncRepository implements SyncRepository {
       deviceId: input.deviceId,
       operationId: input.operationId,
       entityId: input.entityId,
+      cashierId: input.cashierId ?? null,
       reason: input.reason,
       details: input.details ?? null,
+      payload: input.payload ?? null,
+      status: 'open',
+      resolution: null,
+      resolutionNote: null,
+      resolvedAt: null,
+      resolvedBy: null,
       createdAt: new Date().toISOString(),
     };
     this.conflicts.push(conflict);
     return { ...conflict };
+  }
+
+  async findConflict(organizationId: string, id: string): Promise<SyncConflictRecord | null> {
+    const conflict = this.conflicts.find(
+      (record) => record.organizationId === organizationId && record.id === id,
+    );
+    return conflict ? { ...conflict } : null;
   }
 
   async listConflicts(organizationId: string, limit: number): Promise<SyncConflictRecord[]> {
@@ -170,5 +186,38 @@ export class InMemorySyncRepository implements SyncRepository {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id))
       .slice(0, limit)
       .map((conflict) => ({ ...conflict }));
+  }
+
+  async resolveConflict(
+    organizationId: string,
+    id: string,
+    input: ResolveSyncConflictInput,
+  ): Promise<SyncConflictRecord | null> {
+    const conflict = this.conflicts.find(
+      (record) => record.organizationId === organizationId && record.id === id,
+    );
+    if (!conflict || conflict.status !== 'open') return null;
+    conflict.status = 'resolved';
+    conflict.resolution = input.resolution;
+    conflict.resolutionNote = input.resolutionNote;
+    conflict.resolvedAt = input.resolvedAt;
+    conflict.resolvedBy = input.resolvedBy;
+    return { ...conflict };
+  }
+
+  async resolveOperation(
+    organizationId: string,
+    operationId: string,
+    input: ResolveSyncOperationInput,
+  ): Promise<SyncOperationRecord | null> {
+    const operation = this.operations.find(
+      (record) => record.organizationId === organizationId && record.operationId === operationId,
+    );
+    if (!operation) return null;
+    operation.status = input.status;
+    operation.saleId = input.saleId ?? operation.saleId;
+    operation.conflictReason = input.conflictReason ?? null;
+    operation.message = input.message ?? null;
+    return { ...operation };
   }
 }

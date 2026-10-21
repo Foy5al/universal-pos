@@ -1,15 +1,13 @@
 import { createDb, seedDemoData } from '@pos/db';
+import { loadRootEnv } from '@pos/db/env';
 
 import { Argon2PasswordHasher } from './core/passwordHasher';
 
 async function main(): Promise<void> {
+  // .env is optional; the caller may export variables directly.
+  loadRootEnv();
   if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SEED !== '1') {
     throw new Error('Refusing to seed demo data in production');
-  }
-  try {
-    process.loadEnvFile('.env');
-  } catch {
-    // .env is optional; the caller may export variables directly.
   }
   const databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -37,5 +35,3 @@ main().catch((error: unknown) => {
   console.error(error);
   process.exit(1);
 });
-
-

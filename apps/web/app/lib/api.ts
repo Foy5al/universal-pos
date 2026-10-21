@@ -20,6 +20,8 @@ import type {
   Register,
   RegisterDeviceRequest,
   RegisterShift,
+  ResolveSyncConflictRequest,
+  ResolveSyncConflictResponse,
   RestockRequest,
   RestockRequestStatus,
   Sale,
@@ -69,12 +71,12 @@ export function clearToken(): void {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH';
+  method?: 'GET' | 'POST' | 'PATCH' | 'PUT';
   body?: unknown;
   token?: string | null;
 }
 
-async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const token = options.token ?? getToken();
   const headers: Record<string, string> = { accept: 'application/json' };
   if (options.body !== undefined) {
@@ -245,6 +247,16 @@ export function revokeDevice(id: string): Promise<Device> {
 
 export function listSyncConflicts(limit = 50): Promise<SyncConflict[]> {
   return apiFetch(`/sync/conflicts?limit=${limit}`);
+}
+
+export function resolveSyncConflict(
+  id: string,
+  body: ResolveSyncConflictRequest,
+): Promise<ResolveSyncConflictResponse> {
+  return apiFetch(`/sync/conflicts/${encodeURIComponent(id)}/resolve`, {
+    method: 'POST',
+    body,
+  });
 }
 
 export function listSales(query: SaleListQuery = { limit: 20, offset: 0 }): Promise<Page<Sale>> {

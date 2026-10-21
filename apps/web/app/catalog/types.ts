@@ -10,6 +10,7 @@ export interface NewProductInput {
   brandId?: string | undefined;
   unitId?: string | undefined;
   openingQuantity?: string | undefined;
+  lowStockThreshold?: string | undefined;
 }
 
 export interface AddProductResult {

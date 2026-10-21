@@ -3,6 +3,7 @@
 import type { Brand, Category, Unit } from '@pos/contracts';
 import { useState } from 'react';
 
+import { parseThresholdInput } from '../../inventory/thresholdInput';
 import { parseMoneyMinor } from '../../pos/types';
 import type { AddProductResult, NewProductInput } from '../types';
 
@@ -22,6 +23,7 @@ const emptyFields = {
   price: '',
   cost: '',
   quantity: '',
+  lowStock: '',
 };
 
 export function AddProductForm({
@@ -65,6 +67,11 @@ export function AddProductForm({
       setError('Opening stock must be a positive quantity with up to four decimals.');
       return;
     }
+    const lowStockThreshold = parseThresholdInput(fields.lowStock);
+    if (lowStockThreshold === undefined) {
+      setError('Low stock alert must be a non-negative number with up to four decimals.');
+      return;
+    }
 
     try {
       const result = await onCreate({
@@ -77,6 +84,7 @@ export function AddProductForm({
         brandId: brandId || undefined,
         unitId: unitId || undefined,
         openingQuantity: quantity || undefined,
+        lowStockThreshold: lowStockThreshold ?? undefined,
       });
       setFields(emptyFields);
       setMessage(`Added ${result.product.name} (${result.product.sku}).`);
@@ -202,6 +210,20 @@ export function AddProductForm({
             </select>
           </label>
         </div>
+
+        <label className="block text-xs">
+          <span className="mb-1 block text-[var(--color-muted)]">Low stock alert below</span>
+          <input
+            className="field text-right"
+            inputMode="decimal"
+            value={fields.lowStock}
+            onChange={(event) => setField('lowStock', event.target.value)}
+            placeholder="Optional · uses global default"
+          />
+          <span className="mt-1 block text-[0.7rem] text-[var(--color-muted)]">
+            This product-level threshold overrides the global threshold in System settings.
+          </span>
+        </label>
 
         <label className="block text-xs">
           <span className="mb-1 block text-[var(--color-muted)]">Opening stock</span>

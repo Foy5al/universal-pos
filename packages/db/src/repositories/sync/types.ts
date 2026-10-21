@@ -1,4 +1,9 @@
-import type { SyncOperationStatus } from '@pos/contracts';
+import type {
+  OfflineSalePayload,
+  SyncConflictResolution,
+  SyncConflictStatus,
+  SyncOperationStatus,
+} from '@pos/contracts';
 
 export interface DeviceRecord {
   id: string;
@@ -60,8 +65,15 @@ export interface SyncConflictRecord {
   deviceId: string;
   operationId: string;
   entityId: string;
+  cashierId: string | null;
   reason: string;
   details: string | null;
+  payload: OfflineSalePayload | null;
+  status: SyncConflictStatus;
+  resolution: SyncConflictResolution | null;
+  resolutionNote: string | null;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
   createdAt: string;
 }
 
@@ -70,8 +82,24 @@ export interface RecordSyncConflictInput {
   deviceId: string;
   operationId: string;
   entityId: string;
+  cashierId?: string | null;
   reason: string;
   details?: string | null;
+  payload?: OfflineSalePayload | null;
+}
+
+export interface ResolveSyncConflictInput {
+  resolution: SyncConflictResolution;
+  resolutionNote: string | null;
+  resolvedBy: string;
+  resolvedAt: string;
+}
+
+export interface ResolveSyncOperationInput {
+  status: Extract<SyncOperationStatus, 'accepted' | 'rejected'>;
+  saleId?: string | null;
+  conflictReason?: string | null;
+  message?: string | null;
 }
 
 export interface SyncRepository {
@@ -88,7 +116,18 @@ export interface SyncRepository {
     limit: number,
   ): Promise<SyncOperationRecord[]>;
   recordConflict(input: RecordSyncConflictInput): Promise<SyncConflictRecord>;
+  findConflict(organizationId: string, id: string): Promise<SyncConflictRecord | null>;
   listConflicts(organizationId: string, limit: number): Promise<SyncConflictRecord[]>;
+  resolveConflict(
+    organizationId: string,
+    id: string,
+    input: ResolveSyncConflictInput,
+  ): Promise<SyncConflictRecord | null>;
+  resolveOperation(
+    organizationId: string,
+    operationId: string,
+    input: ResolveSyncOperationInput,
+  ): Promise<SyncOperationRecord | null>;
 }
 
 /** A device id may only ever belong to the organization that enrolled it. */

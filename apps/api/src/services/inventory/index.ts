@@ -20,6 +20,7 @@ import {
 
 import { conflict, notFound, validationError } from '../../core/errors';
 import { createCrudService, type CrudService } from '../catalog';
+import { createLowStockService, type LowStockService } from './lowStock';
 
 export interface StockAdjustmentResult {
   movement: StockMovementRecord;
@@ -46,6 +47,7 @@ export interface InventoryService {
     input: CreateStockAdjustmentRequest,
   ): Promise<StockAdjustmentResult>;
   recordLoss(organizationId: string, input: CreateStockLossRequest): Promise<StockAdjustmentResult>;
+  lowStock: LowStockService;
 }
 
 export function createInventoryService(
@@ -56,6 +58,7 @@ export function createInventoryService(
 
   return {
     locations,
+    lowStock: createLowStockService(repo.lowStock, products, repo.ledger, repo.locations),
     async listBalances(organizationId, query) {
       const result = await repo.ledger.listBalances(
         organizationId,

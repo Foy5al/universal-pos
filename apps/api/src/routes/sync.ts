@@ -3,6 +3,7 @@ import { Router } from 'express';
 import {
   listQuerySchema,
   registerDeviceRequestSchema,
+  resolveSyncConflictRequestSchema,
   resourceIdSchema,
   successEnvelope,
   syncPullQuerySchema,
@@ -54,6 +55,21 @@ export function createSyncRouter(service: SyncService): Router {
       const principal = requirePrincipal(req);
       const query = listQuerySchema.parse(req.query);
       res.json(successEnvelope(await service.listConflicts(principal.organizationId, query.limit)));
+    }),
+  );
+
+  router.post(
+    '/sync/conflicts/:id/resolve',
+    authorize('sync:review'),
+    asyncHandler(async (req, res) => {
+      const principal = requirePrincipal(req);
+      const id = resourceIdSchema.parse(req.params.id);
+      const input = resolveSyncConflictRequestSchema.parse(req.body);
+      res.json(
+        successEnvelope(
+          await service.resolveConflict(principal.organizationId, principal.userId, id, input),
+        ),
+      );
     }),
   );
 

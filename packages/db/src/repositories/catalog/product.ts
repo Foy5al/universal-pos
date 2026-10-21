@@ -4,6 +4,7 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 
 import type { Database } from '../../client';
 import { products } from '../../schema/catalog';
+import { formatScaledQuantity, parseScaledQuantity } from '../inventory/quantity';
 import { isUniqueViolation, UniqueConstraintError } from './errors';
 import type { CatalogListOptions, CatalogListResult } from './types';
 
@@ -18,6 +19,8 @@ export interface ProductRecord {
   barcode: string | null;
   priceMinor: number;
   costMinor: number | null;
+  /** Present on records loaded from storage; seeded fixtures may omit it. */
+  lowStockThreshold?: string | null | undefined;
   isActive: boolean;
   createdAt: string;
 }
@@ -53,12 +56,22 @@ export interface ProductRepository {
     options: CatalogListOptions,
   ): Promise<CatalogListResult<ProductRecord>>;
   findById(organizationId: string, id: string): Promise<ProductRecord | null>;
+  listActive(organizationId: string): Promise<ProductRecord[]>;
   create(input: CreateProductInput): Promise<ProductRecord>;
   update(
     organizationId: string,
     id: string,
     input: UpdateProductInput,
   ): Promise<ProductRecord | null>;
+  setLowStockThreshold(
+    organizationId: string,
+    id: string,
+    threshold: string | null,
+  ): Promise<ProductRecord | null>;
+}
+
+function toQuantityString(value: string | null): string | null {
+  return value === null ? null : formatScaledQuantity(parseScaledQuantity(value));
 }
 
 function toProductRecord(row: typeof products.$inferSelect): ProductRecord {
@@ -73,6 +86,7 @@ function toProductRecord(row: typeof products.$inferSelect): ProductRecord {
     barcode: row.barcode,
     priceMinor: row.priceMinor,
     costMinor: row.costMinor,
+    lowStockThreshold: toQuantityString(row.lowStockThreshold),
     isActive: row.isActive,
     createdAt: row.createdAt.toISOString(),
   };
@@ -105,6 +119,12 @@ export class InMemoryProductRepository implements ProductRepository {
     );
   }
 
+  async listActive(organizationId: string): Promise<ProductRecord[]> {
+    return this.records
+      .filter((record) => record.organizationId === organizationId && record.isActive)
+      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  }
+
   async create(input: CreateProductInput): Promise<ProductRecord> {
     if (
       this.records.some(
@@ -124,6 +144,7 @@ export class InMemoryProductRepository implements ProductRepository {
       barcode: input.barcode ?? null,
       priceMinor: input.priceMinor,
       costMinor: input.costMinor ?? null,
+      lowStockThreshold: null,
       isActive: input.isActive ?? true,
       createdAt: new Date().toISOString(),
     };
@@ -160,6 +181,17 @@ export class InMemoryProductRepository implements ProductRepository {
     if (input.isActive !== undefined) record.isActive = input.isActive;
     return record;
   }
+
+  async setLowStockThreshold(
+    organizationId: string,
+    id: string,
+    threshold: string | null,
+  ): Promise<ProductRecord | null> {
+    const record = await this.findById(organizationId, id);
+    if (!record) return null;
+    record.lowStockThreshold = threshold;
+    return record;
+  }
 }
 
 export function createDrizzleProductRepository(db: Database): ProductRepository {
@@ -187,6 +219,14 @@ export function createDrizzleProductRepository(db: Database): ProductRepository 
         .limit(1);
       const row = rows[0];
       return row ? toProductRecord(row) : null;
+    },
+    async listActive(organizationId) {
+      const rows = await db
+        .select()
+        .from(products)
+        .where(and(eq(products.organizationId, organizationId), eq(products.isActive, true)))
+        .orderBy(asc(products.name), asc(products.id));
+      return rows.map(toProductRecord);
     },
     async create(input) {
       try {
@@ -242,6 +282,15 @@ export function createDrizzleProductRepository(db: Database): ProductRepository 
         }
         throw error;
       }
+    },
+    async setLowStockThreshold(organizationId, id, threshold) {
+      const rows = await db
+        .update(products)
+        .set({ lowStockThreshold: threshold })
+        .where(and(eq(products.organizationId, organizationId), eq(products.id, id)))
+        .returning();
+      const row = rows[0];
+      return row ? toProductRecord(row) : null;
     },
   };
 }

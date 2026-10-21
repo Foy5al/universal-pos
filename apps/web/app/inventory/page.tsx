@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { LossForm } from './components/LossForm';
 import { LossLog } from './components/LossLog';
+import { LowStockPanel } from './components/LowStockPanel';
 import { StockReport } from './components/StockReport';
 import { useStock } from './useStock';
 
@@ -48,6 +49,9 @@ export default function InventoryPage() {
           </Link>
           <Link href="/reports" className="btn text-sm">
             Reports
+          </Link>
+          <Link href="/settings" className="btn text-sm">
+            Settings
           </Link>
         </nav>
       </header>
@@ -93,6 +97,7 @@ export default function InventoryPage() {
         </p>
       ) : (
         <>
+          <LowStockPanel locationId={locationId} locationName={locationName} />
           <div className="grid items-start gap-4 lg:grid-cols-[380px_1fr]">
             <LossForm
               locationId={locationId}

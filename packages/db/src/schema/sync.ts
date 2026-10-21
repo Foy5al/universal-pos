@@ -1,7 +1,9 @@
+import type { OfflineSalePayload } from '@pos/contracts';
 import {
   bigserial,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -10,6 +12,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 
+import { users } from './identity';
 import { devices, organizations } from './tenancy';
 import { sales } from './sales';
 
@@ -72,12 +75,24 @@ export const syncConflicts = pgTable(
       .references(() => devices.id, { onDelete: 'restrict' }),
     operationId: uuid('operation_id').notNull(),
     entityId: uuid('entity_id').notNull(),
+    cashierId: uuid('cashier_id').references(() => users.id, { onDelete: 'set null' }),
     reason: text('reason').notNull(),
     details: text('details'),
+    payload: jsonb('payload').$type<OfflineSalePayload>(),
+    status: text('status').notNull().default('open'),
+    resolution: text('resolution'),
+    resolutionNote: text('resolution_note'),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedBy: uuid('resolved_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('sync_conflicts_org_operation_uq').on(table.organizationId, table.operationId),
     index('sync_conflicts_org_created_idx').on(table.organizationId, table.createdAt),
+    index('sync_conflicts_org_status_created_idx').on(
+      table.organizationId,
+      table.status,
+      table.createdAt,
+    ),
   ],
 );

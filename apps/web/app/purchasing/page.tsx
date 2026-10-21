@@ -44,6 +44,9 @@ export default function PurchasingPage() {
           <Link href="/reports" className="btn text-sm">
             Reports
           </Link>
+          <Link href="/settings" className="btn text-sm">
+            Settings
+          </Link>
         </div>
       </header>
 

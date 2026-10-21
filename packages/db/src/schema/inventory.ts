@@ -1,5 +1,7 @@
+import { sql } from 'drizzle-orm';
 import {
   boolean,
+  check,
   date,
   index,
   integer,
@@ -29,6 +31,27 @@ export const stockLossReason = pgEnum('stock_loss_reason', [
   'lost',
   'other',
 ]);
+
+/**
+ * Organization-wide low-stock fallback. A product's own threshold always wins;
+ * this value only applies to products without one.
+ */
+export const lowStockSettings = pgTable(
+  'low_stock_settings',
+  {
+    organizationId: uuid('organization_id')
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    globalThreshold: numeric('global_threshold', { precision: 18, scale: 4 }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    check(
+      'low_stock_settings_global_threshold_non_negative',
+      sql`${table.globalThreshold} is null or ${table.globalThreshold} >= 0`,
+    ),
+  ],
+);
 
 export const stockLocations = pgTable(
   'stock_locations',

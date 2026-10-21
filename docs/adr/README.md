@@ -37,6 +37,8 @@ a changed decision is recorded as a new ADR that supersedes the old one.
 | [0018](0018-sales-reporting-and-xz-shifts.md)           | Sales reporting and X/Z shift reports        | Accepted |
 | [0019](0019-offline-sync-and-device-enrollment.md)      | Offline sync, devices and conflict handling  | Accepted |
 | [0020](0020-restock-request-to-grn-workflow.md)         | Restock request to purchase order to GRN     | Accepted |
+| [0021](0021-synchronous-report-exports.md)              | Synchronous CSV and XLSX report exports      | Accepted |
+| [0022](0022-low-stock-thresholds.md)                    | Low stock thresholds and alerts              | Accepted |
 
 ## Open owner decisions
 

@@ -1,6 +1,7 @@
 'use client';
 
 import type { SyncSummary } from '@pos/offline';
+import Link from 'next/link';
 
 interface SyncStatusBarProps {
   online: boolean;
@@ -40,7 +41,9 @@ export function SyncStatusBar({
       </span>
       {queued > 0 && <span>{queued} queued</span>}
       {summary.needsReview > 0 && (
-        <span className="text-[var(--color-destructive)]">{summary.needsReview} need review</span>
+        <Link href="/sync" className="text-[var(--color-destructive)] underline">
+          {summary.needsReview} need review
+        </Link>
       )}
       {summary.rejected > 0 && (
         <span className="text-[var(--color-destructive)]">{summary.rejected} rejected</span>

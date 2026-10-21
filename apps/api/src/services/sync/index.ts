@@ -1,5 +1,7 @@
 import type {
   RegisterDeviceRequest,
+  ResolveSyncConflictRequest,
+  ResolveSyncConflictResponse,
   SyncConflict,
   SyncEvent,
   SyncPullQuery,
@@ -17,12 +19,19 @@ import {
 
 import { AppError, conflict, forbidden, notFound, validationError } from '../../core/errors';
 import type { SalesService } from '../sales';
+import { resolveConflict as resolveConflictCase, toSyncConflict } from './conflicts';
 
 export interface SyncService {
   listDevices(organizationId: string): Promise<DeviceRecord[]>;
   registerDevice(organizationId: string, input: RegisterDeviceRequest): Promise<DeviceRecord>;
   revokeDevice(organizationId: string, id: string): Promise<DeviceRecord>;
   listConflicts(organizationId: string, limit: number): Promise<SyncConflict[]>;
+  resolveConflict(
+    organizationId: string,
+    userId: string,
+    conflictId: string,
+    input: ResolveSyncConflictRequest,
+  ): Promise<ResolveSyncConflictResponse>;
   push(organizationId: string, userId: string, input: SyncPushRequest): Promise<SyncPushResponse>;
   pull(organizationId: string, query: SyncPullQuery): Promise<SyncPullResponse>;
 }
@@ -142,8 +151,10 @@ export function createSyncService(
           deviceId,
           operationId: event.operationId,
           entityId: event.entityId,
+          cashierId: userId,
           reason,
           details: error.message,
+          payload: event.payload,
         });
         await repo.recordOperation({
           organizationId,
@@ -203,17 +214,11 @@ export function createSyncService(
 
     async listConflicts(organizationId, limit) {
       const conflicts = await repo.listConflicts(organizationId, limit);
-      return conflicts.map((record) => ({
-        id: record.id,
-        organizationId: record.organizationId,
-        operationId: record.operationId,
-        deviceId: record.deviceId,
-        entityId: record.entityId,
-        reason: record.reason,
-        details: record.details,
-        createdAt: record.createdAt,
-      }));
+      return conflicts.map(toSyncConflict);
     },
+
+    resolveConflict: (organizationId, userId, conflictId, input) =>
+      resolveConflictCase(repo, sales, organizationId, userId, conflictId, input),
 
     async push(organizationId, userId, input) {
       const first = input.events[0] as SyncEvent;

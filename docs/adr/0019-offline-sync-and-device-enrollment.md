@@ -40,9 +40,12 @@ slice must not silently choose an oversell policy.
   sale with `duplicate` status and issues stock once.
 - A rejected online posting is never dropped. `insufficient_stock` and other
   posting conflicts become `needs_review`: the operation and a `sync_conflicts`
-  row are stored, the response carries the reason, and the local sale stays in
-  IndexedDB flagged `requires_review`. Deterministic validation failures are
-  stored as `rejected`. There is no last-write-wins reconciliation.
+  row (including the captured payload) are stored, the response carries the
+  reason, and the local sale stays in IndexedDB flagged `requires_review`.
+  Deterministic validation failures are stored as `rejected`. There is no
+  last-write-wins reconciliation; a reviewer either retries the captured sale
+  (keeping the original cashier as `createdBy`) or dismisses it with a
+  settlement note.
 - `GET /v1/sync/pull` is device-scoped with a monotonically increasing
   operation sequence cursor. It returns the canonical sale for acknowledged
   operations so the terminal can replace its provisional receipt.
@@ -75,11 +78,17 @@ Pros: no manual work. Cons: corrupts stock and financial reporting. Rejected.
 
 ## Consequences
 
-- Offline checkout is durable across browser restarts while the page assets are
-  available; the service-worker shell precache and install flow are still
-  pending, so a cold offline launch is not yet guaranteed.
-- Conflict review is currently an API (`GET /v1/sync/conflicts`) plus cashier
-  counts; a manager review/compensation screen is the next increment.
+- Offline checkout is durable across browser restarts. A versioned service
+  worker precaches route HTML plus the build assets referenced by each shell
+  route, caches hashed `/_next/static/` responses, and falls back to the cached
+  POS shell for offline navigations. The web manifest allows installation.
+  Service workers require HTTPS or localhost, and the first visit must complete
+  online so the shell is stored.
+- Conflict review is available at `/sync` for holders of `sync:review`.
+  Reviewers can retry a stored terminal payload after stock is replenished or
+  dismiss it with a settlement note; both paths keep the original operation and
+  audit fields instead of editing financial records. Conflicts recorded before
+  payload storage can only be dismissed manually.
 - Register shifts still require an online open/close in this slice. Cached
   shift state lets an already-open till keep selling, but shift cash totals are
   reconciled by the server when the shift closes.

@@ -207,6 +207,12 @@ export function createDefaultDeps(): AppDeps {
     if (process.env.NODE_ENV === 'production') {
       throw new Error('DATABASE_URL is required in production');
     }
+    if (process.env.NODE_ENV !== 'test') {
+      // Silent in-memory fallback looks like "invalid credentials"; make it visible.
+      console.warn(
+        '[api] DATABASE_URL is not set: using in-memory repositories, so seeded logins will fail.',
+      );
+    }
     return createMemoryDeps();
   }
   return createPostgresDeps(createDb(databaseUrl));

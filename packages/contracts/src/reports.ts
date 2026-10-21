@@ -11,6 +11,18 @@ export const reportRangeQuerySchema = z.object({
 
 export type ReportRangeQuery = z.infer<typeof reportRangeQuerySchema>;
 
+export const reportExportKindSchema = z.enum(['sales-summary', 'store-activity']);
+export type ReportExportKind = z.infer<typeof reportExportKindSchema>;
+
+export const reportExportFormatSchema = z.enum(['csv', 'xlsx']);
+export type ReportExportFormat = z.infer<typeof reportExportFormatSchema>;
+
+/** Export requests reuse the report range filters; `format` picks the file type. */
+export const reportExportQuerySchema = reportRangeQuerySchema.extend({
+  format: reportExportFormatSchema.default('csv'),
+});
+export type ReportExportQuery = z.infer<typeof reportExportQuerySchema>;
+
 export const salesDaySummarySchema = z.object({
   date: z.string(),
   saleCount: z.number().int(),

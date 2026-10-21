@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Universal POS">
+  <rect width="512" height="512" rx="112" fill="#020617" />
+  <rect x="96" y="120" width="320" height="272" rx="40" fill="#0e1223" stroke="#22c55e" stroke-width="16" />
+  <path d="M152 200h208M152 256h144M152 312h96" stroke="#22c55e" stroke-width="24" stroke-linecap="round" />
+  <circle cx="352" cy="312" r="28" fill="#22c55e" />
+</svg>

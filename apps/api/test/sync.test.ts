@@ -4,6 +4,7 @@ import request from 'supertest';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import {
+  CASHIER_A,
   LOCATION_A,
   LOCATION_B,
   ORG_A,
@@ -171,6 +172,147 @@ describe('offline sync API', () => {
     expect(reviewItem).toMatchObject({
       status: 'needs_review',
       conflictReason: 'insufficient_stock',
+    });
+  });
+
+  it('lets a reviewer dismiss a conflict with an audit note', async () => {
+    const event = buildEvent({
+      payload: {
+        locationId: LOCATION_A,
+        registerShiftId: shifts[ORG_A],
+        provisionalNumber: 'OFF-A1-dismiss',
+        lines: [{ productId: PRODUCT_A, quantity: '10000', unitPriceMinor: 1000 }],
+        payments: [{ method: 'cash', tenderedMinor: 10_000_000 }],
+      },
+    });
+    await push('cashier-a@example.com', [event]).expect(200);
+
+    const listed = await request(app)
+      .get('/v1/sync/conflicts')
+      .set('authorization', auth('manager-a@example.com'))
+      .expect(200);
+    const conflict = listed.body.data.find(
+      (item: { operationId: string }) => item.operationId === event.operationId,
+    );
+    expect(conflict).toMatchObject({
+      status: 'open',
+      resolution: null,
+      payload: { provisionalNumber: 'OFF-A1-dismiss' },
+    });
+
+    await request(app)
+      .post(`/v1/sync/conflicts/${conflict.id}/resolve`)
+      .set('authorization', auth('cashier-a@example.com'))
+      .send({ action: 'dismiss', note: 'Cash refunded at the counter' })
+      .expect(403);
+
+    await request(app)
+      .post(`/v1/sync/conflicts/${conflict.id}/resolve`)
+      .set('authorization', auth('manager-a@example.com'))
+      .send({ action: 'dismiss' })
+      .expect(422);
+
+    const resolved = await request(app)
+      .post(`/v1/sync/conflicts/${conflict.id}/resolve`)
+      .set('authorization', auth('manager-a@example.com'))
+      .send({ action: 'dismiss', note: 'Cash refunded at the counter' })
+      .expect(200);
+    expect(resolved.body.data).toMatchObject({
+      conflict: {
+        id: conflict.id,
+        status: 'resolved',
+        resolution: 'dismissed',
+        resolutionNote: 'Cash refunded at the counter',
+      },
+      sale: null,
+    });
+    expect(resolved.body.data.conflict.resolvedBy).toBeTruthy();
+
+    await request(app)
+      .post(`/v1/sync/conflicts/${conflict.id}/resolve`)
+      .set('authorization', auth('manager-a@example.com'))
+      .send({ action: 'dismiss', note: 'Already handled' })
+      .expect(409);
+
+    const pulled = await request(app)
+      .get('/v1/sync/pull')
+      .query({ deviceId })
+      .set('authorization', auth('cashier-a@example.com'))
+      .expect(200);
+    const dismissed = pulled.body.data.items.find(
+      (item: { operationId: string }) => item.operationId === event.operationId,
+    );
+    expect(dismissed.status).toBe('rejected');
+  });
+
+  it('retries a conflict after stock is replenished and posts exactly one sale', async () => {
+    const event = buildEvent({
+      payload: {
+        locationId: LOCATION_A,
+        registerShiftId: shifts[ORG_A],
+        provisionalNumber: 'OFF-A1-retry',
+        lines: [{ productId: PRODUCT_A, quantity: '10000', unitPriceMinor: 1000 }],
+        payments: [{ method: 'cash', tenderedMinor: 10_000_000 }],
+      },
+    });
+    await push('cashier-a@example.com', [event]).expect(200);
+
+    const listed = await request(app)
+      .get('/v1/sync/conflicts')
+      .set('authorization', auth('manager-a@example.com'))
+      .expect(200);
+    const conflict = listed.body.data.find(
+      (item: { operationId: string }) => item.operationId === event.operationId,
+    );
+
+    await request(app)
+      .post(`/v1/sync/conflicts/${conflict.id}/resolve`)
+      .set('authorization', auth('manager-a@example.com'))
+      .send({ action: 'retry' })
+      .expect(409);
+    const stillOpen = await request(app)
+      .get('/v1/sync/conflicts')
+      .set('authorization', auth('manager-a@example.com'))
+      .expect(200);
+    expect(
+      stillOpen.body.data.find(
+        (item: { operationId: string }) => item.operationId === event.operationId,
+      ).status,
+    ).toBe('open');
+
+    await request(app)
+      .post('/v1/inventory/adjustments')
+      .set('authorization', auth('cashier-a@example.com'))
+      .send({
+        locationId: LOCATION_A,
+        productId: PRODUCT_A,
+        quantityDelta: '10000',
+        reason: 'restock',
+      })
+      .expect(201);
+
+    const before = Number(await stockOf());
+
+    const resolved = await request(app)
+      .post(`/v1/sync/conflicts/${conflict.id}/resolve`)
+      .set('authorization', auth('manager-a@example.com'))
+      .send({ action: 'retry', note: 'Stock received' })
+      .expect(200);
+    expect(resolved.body.data.conflict).toMatchObject({
+      status: 'resolved',
+      resolution: 'retried',
+    });
+    expect(resolved.body.data.sale).toMatchObject({
+      operationId: event.operationId,
+      totalMinor: 10_000_000,
+      createdBy: CASHIER_A,
+    });
+    expect(Number(await stockOf())).toBe(before - 10_000);
+
+    const repeated = await push('cashier-a@example.com', [event]).expect(200);
+    expect(repeated.body.data.results[0]).toMatchObject({
+      status: 'duplicate',
+      sale: { id: resolved.body.data.sale.id },
     });
   });
 

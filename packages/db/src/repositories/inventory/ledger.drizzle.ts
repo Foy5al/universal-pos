@@ -93,6 +93,28 @@ export function createDrizzleStockLedgerRepository(db: Database): StockLedgerRep
         missingCostCount: summary?.missingCostCount ?? 0,
       };
     },
+    async sumOnHandByProduct(organizationId, filters) {
+      const conditions = [eq(stockBalances.organizationId, organizationId)];
+      if (filters.locationId) conditions.push(eq(stockBalances.locationId, filters.locationId));
+      if (filters.locationIds) {
+        if (filters.locationIds.length === 0) return [];
+        conditions.push(inArray(stockBalances.locationId, [...filters.locationIds]));
+      }
+      if (filters.productId) conditions.push(eq(stockBalances.productId, filters.productId));
+      const rows = await db
+        .select({
+          productId: stockBalances.productId,
+          quantity: sql<string>`coalesce(sum(${stockBalances.quantity}), 0)::text`,
+        })
+        .from(stockBalances)
+        .where(and(...conditions))
+        .groupBy(stockBalances.productId)
+        .orderBy(asc(stockBalances.productId));
+      return rows.map((row) => ({
+        productId: row.productId,
+        quantity: formatScaledQuantity(parseScaledQuantity(row.quantity)),
+      }));
+    },
     async recordMovement(input) {
       return db.transaction((tx) => recordMovementWithin(tx, input));
     },

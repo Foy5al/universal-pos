@@ -1,6 +1,8 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import type { Principal } from '@pos/contracts';
+
 import {
   createDb,
   createDrizzleCatalogRepository,
@@ -10,6 +12,8 @@ import {
   UniqueConstraintError,
 } from '@pos/db';
 import { beforeAll, describe, expect, it } from 'vitest';
+
+import { createLowStockService } from '../src/services/inventory/lowStock';
 
 const databaseUrl = process.env.DATABASE_URL;
 const describeIfDatabase = databaseUrl ? describe : describe.skip;
@@ -180,5 +184,69 @@ describeIfDatabase('inventory postgres integration', () => {
     const foreign = await inventory.locations.findById(otherOrganizationId, location.id);
     expect(foreign).toBeNull();
     expect(otherLocation.organizationId).toBe(otherOrganizationId);
+  });
+
+  it('persists low stock settings and resolves product overrides in postgres', async () => {
+    const catalog = createDrizzleCatalogRepository(db);
+    const inventory = createDrizzleInventoryRepository(db);
+
+    const organizationId = await createOrg('low-stock');
+    const otherOrganizationId = await createOrg('low-stock-other');
+
+    const product = await catalog.products.create({
+      organizationId,
+      sku: `LS-${organizationId.slice(0, 8)}`,
+      name: 'Low stock widget',
+      priceMinor: 1000,
+    });
+    const location = await inventory.locations.create({ organizationId, name: 'Main Store' });
+    await inventory.ledger.recordMovement({
+      organizationId,
+      locationId: location.id,
+      productId: product.id,
+      movementType: 'receipt',
+      quantityDelta: 70_000n,
+    });
+
+    const settings = await inventory.lowStock.upsert(organizationId, '10');
+    expect(settings.globalThreshold).toBe('10');
+
+    const service = createLowStockService(
+      inventory.lowStock,
+      catalog.products,
+      inventory.ledger,
+      inventory.locations,
+    );
+
+    const principal: Principal = {
+      userId: crypto.randomUUID(),
+      email: 'integration-low-stock@example.com',
+      displayName: 'Integration Tester',
+      organizationId,
+      storeIds: [],
+      permissions: ['inventory:read'],
+    };
+    const globalOverview = await service.list(principal, {});
+    expect(globalOverview.globalThreshold).toBe('10');
+    expect(globalOverview.items).toEqual([
+      {
+        productId: product.id,
+        name: 'Low stock widget',
+        sku: product.sku,
+        onHand: '7',
+        threshold: '10',
+        source: 'global',
+      },
+    ]);
+
+    await catalog.products.setLowStockThreshold(organizationId, product.id, '5');
+    const overridden = await service.list(principal, { locationId: location.id });
+    expect(overridden.items).toEqual([]);
+    expect(overridden.productThresholds).toEqual([{ productId: product.id, threshold: '5' }]);
+
+    await catalog.products.setLowStockThreshold(organizationId, product.id, null);
+    await inventory.lowStock.upsert(organizationId, null);
+    expect(await inventory.lowStock.get(organizationId)).toMatchObject({ globalThreshold: null });
+    expect(await inventory.lowStock.get(otherOrganizationId)).toBeNull();
   });
 });

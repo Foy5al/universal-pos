@@ -18,6 +18,8 @@ export const VIEWER_A = '00000000-0000-4000-8000-0000000000a2';
 export const CASHIER_B = '00000000-0000-4000-8000-0000000000b1';
 export const SCOPED_A = '00000000-0000-4000-8000-0000000000a3';
 export const MANAGER_A = '00000000-0000-4000-8000-0000000000a4';
+export const ANALYST_A = '00000000-0000-4000-8000-0000000000a5';
+export const ANALYST_B = '00000000-0000-4000-8000-0000000000b5';
 
 export const PRODUCT_A = '00000000-0000-4000-8000-0000000000f1';
 export const PRODUCT_B = '00000000-0000-4000-8000-0000000000f2';
@@ -136,12 +138,28 @@ const principals: Principal[] = [
     permissions: [...cashierPermissions],
   },
   {
+    userId: ANALYST_B,
+    email: 'analyst-b@example.com',
+    displayName: 'Analyst B',
+    organizationId: ORG_B,
+    storeIds: [],
+    permissions: ['reports:read', 'reports:export'],
+  },
+  {
     userId: SCOPED_A,
     email: 'scoped-a@example.com',
     displayName: 'Scoped A',
     organizationId: ORG_A,
     storeIds: [STORE_C],
-    permissions: ['sales:read', 'reports:read'],
+    permissions: ['sales:read', 'reports:read', 'reports:export'],
+  },
+  {
+    userId: ANALYST_A,
+    email: 'analyst-a@example.com',
+    displayName: 'Analyst A',
+    organizationId: ORG_A,
+    storeIds: [],
+    permissions: ['sales:read', 'reports:read', 'reports:export'],
   },
   {
     userId: MANAGER_A,

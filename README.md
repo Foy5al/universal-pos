@@ -4,10 +4,12 @@ Multi-tenant, multi-branch, offline-first retail POS and operations platform for
 electronics, pharmacies, supermarkets, groceries and general retail.
 
 This repository is at **P4 - Offline POS MVP** (cash checkout is durable in
-IndexedDB and syncs through an idempotent outbox; the PWA shell precache and
-conflict-review screen still follow). Architecture decisions live in
-`docs/adr/`; exports and finance slices follow. See `plan.md` for the full
-roadmap and `AGENTS.md` for engineering rules.
+IndexedDB, syncs through an idempotent outbox, conflicts have a manager review
+screen and the installable PWA shell is precached for cold offline launches).
+Architecture decisions live in `docs/adr/`. Sales summary and store activity
+reports export to CSV and XLSX with the `reports:export` permission; the
+remaining reporting, finance and export slices follow. See `plan.md` for the
+full roadmap and `AGENTS.md` for engineering rules.
 
 ## Requirements
 
@@ -96,7 +98,7 @@ components, no business logic in route controllers. See ADR-0008.
 - Migrations live in `packages/db/migrations` (0000 identity/tenancy, 0001
   catalog, 0002 inventory, 0003 purchasing, 0004 sales, 0005 register shifts,
   0006 refunds, 0007 stock losses, 0008 restock requests, 0009 sync
-  operations/conflicts). Run
+  operations/conflicts, 0010 conflict review fields). Run
   `pnpm --filter @pos/db db:migrate` and `db:seed` (seeds permission keys)
   against a running Postgres.
 - Tenant/RBAC-scoped slices: stores, then catalog (`/v1/catalog/categories`,
@@ -127,6 +129,14 @@ components, no business logic in route controllers. See ADR-0008.
   and stores the catalog cost snapshot for reporting. Expired losses require
   the expiry date. Reads need `inventory:read`; recording needs
   `inventory:adjust`.
+- Low stock alerts: `GET /v1/inventory/low-stock` resolves a product-level
+  threshold first and falls back to the organization-wide threshold; on-hand is
+  summed per location or across the organization. Managers set the global rule
+  with `PUT /v1/inventory/low-stock/settings` and a product override with
+  `PUT /v1/inventory/low-stock/products/:productId` (`null` clears it), both
+  behind `inventory:manage`. The global rule is edited on `/settings`; product
+  overrides are part of adding/editing a product in `/catalog`. Reads need
+  `inventory:read` (ADR-0022).
 - Online POS MVP: `POST /v1/sales` posts an immutable cash sale (price/sku/name
   snapshots, integer minor units), its payment and the stock issue in one
   PostgreSQL transaction. `operationId` makes retries idempotent; insufficient
@@ -145,11 +155,15 @@ components, no business logic in route controllers. See ADR-0008.
   enrolls the terminal on first use, keeps the terminal's captured unit prices
   (half-up integer rounding) and deduplicates on `(organizationId,
 operationId)`, returning the same `INV-` sale on retries. Insufficient stock
-  or other posting conflicts are stored as `sync_conflicts` and returned as
-  `needs_review` instead of dropping the sale; deterministic validation
-  failures return `rejected`. `GET /v1/sync/pull` is device-scoped with a
-  sequence cursor for canonical receipts, and `GET /v1/sync/conflicts` lists
-  review cases. Devices are listed with `devices:read`, enrolled/revoked with
+  or other posting conflicts are stored as `sync_conflicts` with the captured
+  sale payload and returned as `needs_review` instead of dropping the sale;
+  deterministic validation failures return `rejected`. `GET /v1/sync/pull` is
+  device-scoped with a sequence cursor for canonical receipts, and
+  `GET /v1/sync/conflicts` lists review cases. A reviewer resolves one case with
+  `POST /v1/sync/conflicts/:id/resolve`: `retry` reposts the captured sale (for
+  example after restocking) and `dismiss` requires a settlement note and marks
+  the operation rejected. Resolved cases keep their audit trail and cannot be
+  resolved twice. Devices are listed with `devices:read`, enrolled/revoked with
   `devices:manage`; push needs `sync:push`, pull `sync:pull`, review
   `sync:review` (ADR-0019).
 - Refunds: `POST /v1/sales/:id/refunds` issues one full-sale cash refund with a
@@ -172,17 +186,23 @@ operationId)`, returning the same `INV-` sale on retries. Insufficient stock
   brands to filter the product list. `/purchasing` covers suppliers, restock
   review, draft orders and goods receipts (GRN); out-of-stock till tiles open a
   restock request dialog for cashiers with `restock:request`. `/inventory`
-  records waste/damage/expiry and shows
-  stock and loss value by location. The `/reports` dashboard shows range and
+  records waste/damage/expiry, shows stock and loss value by location, and
+  lists low stock alerts with their resolved rule. `/settings` is the home for
+  organization-wide defaults such as the global low stock threshold;
+  per-product thresholds are set while adding or editing a product in
+  `/catalog`. The `/reports` dashboard shows range and
   daily totals, stock-loss and receiving activity, and X/Z shift reports; its
   cost figures are operational snapshots, not double-entry accounting.
   The till shows ONLINE/OFFLINE/SYNCING state, queued and needs-review counts,
   the last sync time and a retry control, prints provisional `OFF-` receipts
   before sync and swaps to the canonical invoice once accepted. It restores
   cached catalog, stock, session, register and shift state on an offline
-  reload. Discounts, tax, void, product editing, cashier/register report
-  filters, exports, the service-worker app-shell precache and a manager
-  conflict-review screen are not implemented yet.
+  reload. A versioned service worker precaches the app shell, route HTML and
+  referenced build assets, and the web manifest makes the till installable.
+  The `/sync` screen lets a manager retry or dismiss offline sale conflicts
+  with a review note and lists/revokes enrolled terminals. Discounts, tax,
+  void, product editing, cashier/register report filters and line-level exports
+  are not implemented yet.
 - Pending owner decisions: ADR-0013 (inventory costing) and ADR-0014 (offline
   oversell policy) block P2 valuation, margin reporting and P4 offline
   acceptance. Sales currently record quantity movements without cost snapshots,

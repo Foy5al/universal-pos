@@ -99,6 +99,11 @@ export interface StockLedgerRepository {
     options: CatalogListOptions,
   ): Promise<CatalogListResult<StockMovementRecord>>;
   summarizeMovements(organizationId: string, filters: StockFilters): Promise<StockMovementSummary>;
+  /** On-hand quantity per product, summed across the filtered locations. */
+  sumOnHandByProduct(
+    organizationId: string,
+    filters: StockFilters,
+  ): Promise<Array<{ productId: string; quantity: string }>>;
   recordMovement(input: RecordMovementInput): Promise<RecordMovementResult>;
 }
 
@@ -227,6 +232,21 @@ export class InMemoryStockLedgerRepository implements StockLedgerRepository {
       costValueMinor,
       missingCostCount,
     };
+  }
+
+  async sumOnHandByProduct(
+    organizationId: string,
+    filters: StockFilters,
+  ): Promise<Array<{ productId: string; quantity: string }>> {
+    const totals = new Map<string, bigint>();
+    for (const balance of this.balances.values()) {
+      if (balance.organizationId !== organizationId) continue;
+      if (!matchesFilters(balance, filters)) continue;
+      totals.set(balance.productId, (totals.get(balance.productId) ?? 0n) + balance.quantity);
+    }
+    return [...totals.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([productId, quantity]) => ({ productId, quantity: formatScaledQuantity(quantity) }));
   }
 
   async recordMovement(input: RecordMovementInput): Promise<RecordMovementResult> {
