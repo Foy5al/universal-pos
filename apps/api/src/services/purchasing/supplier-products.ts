@@ -5,11 +5,7 @@ import {
   type Principal,
   type SupplierProductListQuery,
 } from '@pos/contracts';
-import type {
-  ProductRepository,
-  PurchasingRepository,
-  SupplierProductRecord,
-} from '@pos/db';
+import type { ProductRepository, PurchasingRepository, SupplierProductRecord } from '@pos/db';
 
 import { notFound } from '../../core/errors';
 

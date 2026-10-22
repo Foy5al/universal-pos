@@ -4,6 +4,7 @@ export * from './envelope';
 export * from './inventory';
 export * from './pagination';
 export * from './permissions';
+export * from './pos';
 export * from './purchasing';
 export * from './refunds';
 export * from './registers';

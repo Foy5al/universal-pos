@@ -2,6 +2,7 @@ export * from './authorization';
 export * from './catalog/index';
 export * from './inventory/index';
 export * from './membership';
+export * from './posSettings';
 export * from './purchasing/index';
 export * from './refunds/index';
 export * from './registers/index';

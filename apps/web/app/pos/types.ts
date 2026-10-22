@@ -23,14 +23,24 @@ export function cartTotalMinor(lines: readonly CartLine[]): number {
   }, 0);
 }
 
-export function nextQuantity(quantity: string): string {
-  const [whole, fraction = ''] = quantity.split('.');
-  const scaled = Number(whole) * 10_000 + Number((fraction + '0000').slice(0, 4)) + 10_000;
+function formatQuantityScaled(scaled: number): string {
   const wholePart = Math.floor(scaled / 10_000);
   const fractionPart = String(scaled % 10_000)
     .padStart(4, '0')
     .replace(/0+$/, '');
   return fractionPart.length > 0 ? `${wholePart}.${fractionPart}` : `${wholePart}`;
+}
+
+export function nextQuantity(quantity: string): string {
+  const scaled = parseQuantityScaled(quantity) ?? 0;
+  return formatQuantityScaled(scaled + 10_000);
+}
+
+/** Never drops below one unit; the quantity field still allows manual decimals. */
+export function previousQuantity(quantity: string): string {
+  const scaled = parseQuantityScaled(quantity);
+  if (scaled === null || scaled <= 10_000) return '1';
+  return formatQuantityScaled(scaled - 10_000);
 }
 
 export function isValidQuantity(quantity: string): boolean {

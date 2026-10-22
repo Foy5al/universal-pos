@@ -31,6 +31,7 @@ import {
 } from '../lib/api';
 import { clearOfflineCatalog, offlineDatabase } from '../lib/offlineSync';
 import { clearPosBootstrap, readPosBootstrap, savePosBootstrap } from './posBootstrap';
+import { clearPausedOrders } from './pausedOrders';
 
 function cachedBalances(
   locationId: string,
@@ -178,6 +179,7 @@ export function usePosData(locationId: string) {
     } catch {
       // Cache cleanup is best effort.
     }
+    clearPausedOrders();
     clearPosBootstrap();
     clearToken();
     router.replace('/login');

@@ -3,6 +3,7 @@
 import Link from 'next/link';
 
 import { GlobalThresholdForm } from './components/GlobalThresholdForm';
+import { PosControlsSection } from './components/PosControlsSection';
 import { useLowStockSettings } from './useLowStockSettings';
 
 const relatedConfiguration = [
@@ -87,6 +88,12 @@ export default function SettingsPage() {
               Inventory alerts
             </a>
             <a
+              href="#pos-controls"
+              className="rounded-md px-3 py-2 hover:bg-[var(--color-border)]/40"
+            >
+              POS controls
+            </a>
+            <a
               href="#configuration"
               className="rounded-md px-3 py-2 hover:bg-[var(--color-border)]/40"
             >
@@ -128,6 +135,8 @@ export default function SettingsPage() {
                 </Link>
               </div>
             </section>
+
+            <PosControlsSection />
 
             <section
               id="configuration"

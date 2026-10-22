@@ -5,6 +5,7 @@ import {
   createDrizzleCatalogRepository,
   createDrizzleInventoryRepository,
   createDrizzleMembershipRepository,
+  createDrizzlePosSettingsRepository,
   createDrizzlePurchasingRepository,
   createDrizzleRefundsRepository,
   createDrizzleRegisterRepository,
@@ -20,6 +21,7 @@ import {
   InMemoryCatalogRepository,
   InMemoryInventoryRepository,
   InMemoryMembershipRepository,
+  InMemoryPosSettingsRepository,
   InMemoryPurchasingRepository,
   InMemoryRefundsRepository,
   InMemoryRegisterRepository,
@@ -50,6 +52,7 @@ import { RepositorySessionResolver } from './core/sessionResolver';
 import { OpaqueTokenService } from './core/tokenService';
 import { createCatalogService } from './services/catalog';
 import { createInventoryService } from './services/inventory';
+import { createPosSettingsService } from './services/posSettings';
 import { createPurchasingService } from './services/purchasing';
 import { createRegisterService } from './services/registers';
 import { createReportsService } from './services/reports';
@@ -132,6 +135,7 @@ export function createMemoryDeps(seed: MemorySeed = {}): AppDeps {
     stores,
     catalog: createCatalogService(catalogRepository),
     inventory: createInventoryService(inventoryRepository, catalogRepository.products),
+    posSettings: createPosSettingsService(new InMemoryPosSettingsRepository()),
     purchasing: createPurchasingService(
       purchasingRepository,
       catalogRepository.products,
@@ -193,6 +197,7 @@ export function createPostgresDeps(db: Database): AppDeps {
     stores,
     catalog: createCatalogService(catalogRepository),
     inventory: createInventoryService(inventoryRepository, catalogRepository.products),
+    posSettings: createPosSettingsService(createDrizzlePosSettingsRepository(db)),
     purchasing: createPurchasingService(
       createDrizzlePurchasingRepository(db),
       catalogRepository.products,

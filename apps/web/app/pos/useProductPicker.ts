@@ -2,7 +2,7 @@
 
 import type { Product } from '@pos/contracts';
 import type { Dispatch, SetStateAction } from 'react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { isValidQuantity, lineQuantityIssue, nextQuantity, type CartLine } from './types';
 
@@ -37,6 +37,16 @@ export function useProductPicker({
         (product.barcode ?? '').toLowerCase() === term,
     );
   }, [products, search]);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [search, products]);
+
+  const highlightedProduct =
+    filteredProducts.length === 0
+      ? null
+      : (filteredProducts[Math.min(highlightedIndex, filteredProducts.length - 1)] ?? null);
 
   function addProduct(product: Product) {
     onAdd();
@@ -62,12 +72,26 @@ export function useProductPicker({
     const match =
       products.find((product) => (product.barcode ?? '').toLowerCase() === term) ??
       products.find((product) => product.sku.toLowerCase() === term) ??
-      (filteredProducts.length === 1 ? filteredProducts[0] : undefined);
+      highlightedProduct;
     if (match) {
       addProduct(match);
       setSearch('');
     }
   }
 
-  return { filteredProducts, addProduct, handleScan };
+  function moveHighlight(delta: number) {
+    if (filteredProducts.length === 0) return;
+    setHighlightedIndex((current) => {
+      const base = Math.min(current, filteredProducts.length - 1);
+      return (base + delta + filteredProducts.length) % filteredProducts.length;
+    });
+  }
+
+  return {
+    filteredProducts,
+    addProduct,
+    handleScan,
+    highlightedProductId: highlightedProduct?.id ?? null,
+    moveHighlight,
+  };
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import type { Product } from '@pos/contracts';
+import { useEffect, useRef } from 'react';
 
 import { formatMinor } from '../../lib/money';
 
@@ -10,6 +11,7 @@ interface ProductGridProps {
   onAdd: (product: Product) => void;
   onRequestRestock?: ((product: Product) => void) | undefined;
   disabled?: boolean;
+  highlightedProductId?: string | null;
 }
 
 export function ProductGrid({
@@ -18,7 +20,17 @@ export function ProductGrid({
   onAdd,
   onRequestRestock,
   disabled,
+  highlightedProductId,
 }: ProductGridProps) {
+  const listRef = useRef<HTMLUListElement>(null);
+
+  useEffect(() => {
+    if (!highlightedProductId) return;
+    listRef.current
+      ?.querySelector<HTMLElement>('[data-highlighted="true"]')
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [highlightedProductId]);
+
   if (products.length === 0) {
     return (
       <p className="rounded-lg border border-dashed border-[var(--color-border)] p-6 text-sm text-[var(--color-muted)]">
@@ -28,16 +40,20 @@ export function ProductGrid({
   }
 
   return (
-    <ul className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4" role="list">
+    <ul ref={listRef} className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-4" role="list">
       {products.map((product) => {
         const stock = stockByProduct.get(product.id) ?? '0';
         const soldOut = Number(stock) <= 0;
         const canRequestRestock = soldOut && onRequestRestock !== undefined;
+        const highlighted = product.id === highlightedProductId;
         return (
           <li key={product.id}>
             <button
               type="button"
-              className="surface flex h-full w-full min-h-24 flex-col items-start gap-1 p-3 text-left transition hover:border-[var(--color-focus)] disabled:cursor-not-allowed disabled:opacity-50"
+              className={`surface flex h-full w-full min-h-24 flex-col items-start gap-1 p-3 text-left transition hover:border-[var(--color-focus)] disabled:cursor-not-allowed disabled:opacity-50 ${
+                highlighted ? 'border-[var(--color-focus)] ring-2 ring-[var(--color-focus)]' : ''
+              }`}
+              data-highlighted={highlighted ? 'true' : undefined}
               onClick={() =>
                 soldOut && onRequestRestock ? onRequestRestock(product) : onAdd(product)
               }

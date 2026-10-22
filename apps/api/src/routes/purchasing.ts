@@ -40,9 +40,7 @@ export function createPurchasingRouter(service: PurchasingService): Router {
       const principal = requirePrincipal(req);
       const supplierId = resourceIdSchema.parse(req.params.supplierId);
       const query = supplierProductListQuerySchema.parse(req.query);
-      res.json(
-        successEnvelope(await service.supplierProducts.list(principal, supplierId, query)),
-      );
+      res.json(successEnvelope(await service.supplierProducts.list(principal, supplierId, query)));
     }),
   );
 

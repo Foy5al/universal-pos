@@ -13,6 +13,7 @@ interface PosToolbarProps {
   search: string;
   onSearchChange: (value: string) => void;
   onScan: () => void;
+  onMoveHighlight: (delta: number) => void;
 }
 
 export function PosToolbar({
@@ -26,6 +27,7 @@ export function PosToolbar({
   search,
   onSearchChange,
   onScan,
+  onMoveHighlight,
 }: PosToolbarProps) {
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -64,6 +66,7 @@ export function PosToolbar({
       <label className="flex min-w-64 flex-1 items-center gap-2 text-sm">
         <span className="sr-only">Scan barcode or search products</span>
         <input
+          id="product-search"
           className="field"
           placeholder="Scan barcode or search name / SKU"
           value={search}
@@ -72,6 +75,16 @@ export function PosToolbar({
             if (event.key === 'Enter') {
               event.preventDefault();
               onScan();
+            } else if (
+              search.trim().length > 0 &&
+              !event.ctrlKey &&
+              !event.altKey &&
+              !event.metaKey &&
+              !event.shiftKey &&
+              (event.key === 'ArrowDown' || event.key === 'ArrowUp')
+            ) {
+              event.preventDefault();
+              onMoveHighlight(event.key === 'ArrowDown' ? 1 : -1);
             }
           }}
           autoFocus

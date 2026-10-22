@@ -26,10 +26,7 @@ export interface RestockService {
     requestIds: readonly string[],
     productIds: readonly string[],
   ): Promise<RestockRequestRecord[]>;
-  schedule(
-    order: PurchaseOrderRecord,
-    requests: readonly RestockRequestRecord[],
-  ): Promise<void>;
+  schedule(order: PurchaseOrderRecord, requests: readonly RestockRequestRecord[]): Promise<void>;
   release(organizationId: string, purchaseOrderId: string): Promise<void>;
   fulfill(organizationId: string, purchaseOrderId: string): Promise<void>;
 }
@@ -57,10 +54,7 @@ export function createRestockService(
     return allowed.map((location) => location.id);
   }
 
-  async function requireRequest(
-    principal: Principal,
-    id: string,
-  ): Promise<RestockRequestRecord> {
+  async function requireRequest(principal: Principal, id: string): Promise<RestockRequestRecord> {
     const request = await repo.restockRequests.findById(principal.organizationId, id);
     if (!request) {
       throw notFound('Restock request not found');

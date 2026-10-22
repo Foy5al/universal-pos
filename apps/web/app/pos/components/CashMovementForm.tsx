@@ -42,9 +42,7 @@ export function CashMovementForm({ busy, onSubmit }: CashMovementFormProps) {
 
   return (
     <form className="flex flex-wrap items-end gap-2" onSubmit={submit}>
-      <span className="pb-2 text-xs font-semibold">
-        {type === 'in' ? 'Cash in' : 'Cash out'}
-      </span>
+      <span className="pb-2 text-xs font-semibold">{type === 'in' ? 'Cash in' : 'Cash out'}</span>
       <label className="text-xs">
         <span className="mb-1 block text-[var(--color-muted)]">Amount</span>
         <input

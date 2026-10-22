@@ -83,7 +83,9 @@ export class DefaultAuthService implements AuthService {
       if (!organization) {
         return null;
       }
-      return (await this.deps.memberships.isMember(userId, organization.id)) ? organization.id : null;
+      return (await this.deps.memberships.isMember(userId, organization.id))
+        ? organization.id
+        : null;
     }
     const organizationIds = await this.deps.memberships.listOrganizationIds(userId);
     return organizationIds[0] ?? null;

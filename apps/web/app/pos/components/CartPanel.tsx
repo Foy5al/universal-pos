@@ -16,6 +16,9 @@ interface CartPanelProps {
   onChangeQuantity: (productId: string, quantity: string) => void;
   onRemove: (productId: string) => void;
   onClear: () => void;
+  onPause: () => void;
+  onOpenPaused: () => void;
+  pausedCount: number;
   tendered: string;
   onTenderedChange: (value: string) => void;
   onSubmit: () => void;
@@ -30,6 +33,9 @@ export function CartPanel({
   onChangeQuantity,
   onRemove,
   onClear,
+  onPause,
+  onOpenPaused,
+  pausedCount,
   tendered,
   onTenderedChange,
   onSubmit,
@@ -54,14 +60,35 @@ export function CartPanel({
     <section className="surface flex min-h-0 flex-col" aria-label="Current sale">
       <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
         <h2 className="text-base font-semibold">Current sale</h2>
-        <button
-          type="button"
-          className="text-xs font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)] disabled:opacity-40"
-          onClick={onClear}
-          disabled={lines.length === 0 || submitting}
-        >
-          Clear
-        </button>
+        <div className="flex items-center gap-2">
+          {pausedCount > 0 && (
+            <button
+              type="button"
+              className="rounded-full border border-[var(--color-border)] px-2 py-1 text-xs font-semibold text-[var(--color-accent)]"
+              onClick={onOpenPaused}
+              title="Open paused sales (F7)"
+            >
+              Paused {pausedCount}
+            </button>
+          )}
+          <button
+            type="button"
+            className="text-xs font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)] disabled:opacity-40"
+            onClick={onPause}
+            disabled={lines.length === 0 || submitting}
+            title="Pause this sale and start another (F6)"
+          >
+            Pause
+          </button>
+          <button
+            type="button"
+            className="text-xs font-semibold text-[var(--color-muted)] hover:text-[var(--color-foreground)] disabled:opacity-40"
+            onClick={onClear}
+            disabled={lines.length === 0 || submitting}
+          >
+            Clear
+          </button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
@@ -144,6 +171,7 @@ export function CartPanel({
           <label className="block text-sm">
             <span className="mb-1 block text-[var(--color-muted)]">Customer pays</span>
             <input
+              id="tender-input"
               className="field text-right text-lg font-semibold"
               inputMode="decimal"
               autoComplete="off"

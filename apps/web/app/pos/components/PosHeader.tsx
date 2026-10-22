@@ -13,6 +13,13 @@ export function PosHeader({ userLabel, onSignOut }: PosHeaderProps) {
       <div>
         <h1 className="text-xl font-semibold">Universal POS</h1>
         <p className="text-xs text-[var(--color-muted)]">{userLabel}</p>
+        <p className="mt-1 text-[11px] text-[var(--color-muted)]">
+          Keyboard-first · press{' '}
+          <kbd className="rounded border border-[var(--color-border)] px-1 font-mono text-[10px]">
+            F1
+          </kbd>{' '}
+          for shortcuts
+        </p>
       </div>
       <nav className="flex flex-wrap items-center gap-3" aria-label="Sections">
         <Link href="/catalog" className="btn text-sm">

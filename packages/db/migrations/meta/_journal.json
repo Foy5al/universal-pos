@@ -92,6 +92,13 @@
       "when": 1792653067821,
       "tag": "0012_normal_betty_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792663097151,
+      "tag": "0013_wooden_madripoor",
+      "breakpoints": true
     }
   ]
 }

@@ -1,17 +1,16 @@
 'use client';
 
-import type { Product, Sale } from '@pos/contracts';
-import type { LocalSale } from '@pos/offline';
+import type { Product } from '@pos/contracts';
 import { useEffect, useMemo, useState } from 'react';
 
-import { getSale } from '../lib/api';
-import { offlineDatabase } from '../lib/offlineSync';
-import { CartPanel } from './components/CartPanel';
 import { CheckoutResult } from './components/CheckoutResult';
+import { HeldSaleDialogs } from './components/HeldSaleDialogs';
 import { PosHeader } from './components/PosHeader';
+import { PosNotices } from './components/PosNotices';
+import { PosShortcutLayer } from './components/PosShortcutLayer';
 import { PosToolbar } from './components/PosToolbar';
-import { ProductGrid } from './components/ProductGrid';
 import { RestockRequestDialog } from './components/RestockRequestDialog';
+import { SaleWorkspace } from './components/SaleWorkspace';
 import { ShiftPanel } from './components/ShiftPanel';
 import { SyncStatusBar } from './components/SyncStatusBar';
 import { readPosBootstrap, savePosBootstrap } from './posBootstrap';
@@ -22,26 +21,28 @@ import {
   parseTenderMinor,
   type CartLine,
 } from './types';
+import { useHeldSales } from './useHeldSales';
 import { useOfflineCheckout } from './useOfflineCheckout';
+import { usePosControls } from './usePosControls';
 import { usePosData } from './usePosData';
+import { usePosReceipt } from './usePosReceipt';
 import { useProductPicker } from './useProductPicker';
 import { useRegisterShift } from './useRegisterShift';
-
-type Receipt = { kind: 'server'; sale: Sale } | { kind: 'local'; sale: LocalSale };
 
 export default function PosPage() {
   const [locationId, setLocationId] = useState(() => readPosBootstrap()?.locationId ?? '');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [search, setSearch] = useState('');
   const [tendered, setTendered] = useState('');
-  const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [restockProduct, setRestockProduct] = useState<Product | null>(null);
   const [restockNotice, setRestockNotice] = useState<string | null>(null);
 
   const data = usePosData(locationId);
   const { products, locations, registers, balances, loading, error, setError, online } = data;
+  const posSettings = usePosControls(data.user?.organizationId ?? null);
   const offline = useOfflineCheckout({ online });
+  const { receipt, setReceipt, showReceipt, refreshReceipt } = usePosReceipt(offline.sync);
   const canRequestRestock = online && (data.user?.permissions.includes('restock:request') ?? false);
 
   useEffect(() => {
@@ -59,11 +60,16 @@ export default function PosPage() {
   const shiftState = useRegisterShift(registers, storeId);
   const { shift, registerId, availableRegisters } = shiftState;
 
-  function resetSale() {
-    setCart([]);
+  function resetCheckoutUi() {
     setReceipt(null);
     setTendered('');
+    setSearch('');
     setError(null);
+  }
+
+  function resetSale() {
+    setCart([]);
+    resetCheckoutUi();
   }
 
   function changeLocation(next: string) {
@@ -93,6 +99,15 @@ export default function PosPage() {
     onAdd: () => setReceipt(null),
   });
 
+  const held = useHeldSales({
+    locationId,
+    settings: posSettings,
+    cart,
+    setCart,
+    setError,
+    resetCheckoutUi,
+  });
+
   const totalMinor = cartTotalMinor(cart);
   const quantitiesValid = cart.every(
     (line) =>
@@ -103,19 +118,6 @@ export default function PosPage() {
   const tenderMinor = tendered.trim() ? parseTenderMinor(tendered) : totalMinor;
   const tenderValid = tenderMinor !== null && tenderMinor >= totalMinor;
   const canCheckout = shift?.status === 'open' && quantitiesValid && tenderValid && totalMinor > 0;
-
-  async function showReceipt(local: LocalSale): Promise<void> {
-    if (local.serverSaleId) {
-      try {
-        const server = await getSale(local.serverSaleId);
-        setReceipt({ kind: 'server', sale: server });
-        return;
-      } catch {
-        // Keep the local receipt when the canonical sale is not reachable yet.
-      }
-    }
-    setReceipt({ kind: 'local', sale: local });
-  }
 
   async function submitSale() {
     if (!canCheckout || !shift || !locationId || tenderMinor === null) {
@@ -144,13 +146,6 @@ export default function PosPage() {
     } finally {
       setSubmitting(false);
     }
-  }
-
-  async function refreshReceipt() {
-    if (receipt?.kind !== 'local') return;
-    await offline.sync();
-    const updated = await offlineDatabase().localSales.get(receipt.sale.id);
-    if (updated) await showReceipt(updated);
   }
 
   return (
@@ -188,6 +183,7 @@ export default function PosPage() {
         search={search}
         onSearchChange={setSearch}
         onScan={picker.handleScan}
+        onMoveHighlight={picker.moveHighlight}
       />
 
       <ShiftPanel
@@ -200,23 +196,7 @@ export default function PosPage() {
         onClose={shiftState.closeShift}
       />
 
-      {error && (
-        <p
-          role="alert"
-          className="rounded-lg border border-[var(--color-destructive)]/50 p-3 text-sm"
-        >
-          {error}
-        </p>
-      )}
-
-      {restockNotice && (
-        <p
-          role="status"
-          className="rounded-lg border border-[var(--color-accent)]/50 p-3 text-sm text-[var(--color-accent)]"
-        >
-          {restockNotice}
-        </p>
-      )}
+      <PosNotices error={error} restockNotice={restockNotice} />
 
       {loading ? (
         <p className="p-8 text-center text-sm text-[var(--color-muted)]">Loading catalog...</p>
@@ -236,39 +216,30 @@ export default function PosPage() {
           }}
         />
       ) : (
-        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1fr_380px]">
-          <section aria-label="Products" className="min-h-0">
-            <ProductGrid
-              products={picker.filteredProducts}
-              stockByProduct={stockByProduct}
-              onAdd={picker.addProduct}
-              onRequestRestock={canRequestRestock ? setRestockProduct : undefined}
-              disabled={false}
-            />
-          </section>
-          <CartPanel
-            lines={cart}
-            stockByProduct={stockByProduct}
-            onChangeQuantity={(productId, quantity) => {
-              setError(null);
-              setCart((current) =>
-                current.map((line) =>
-                  line.product.id === productId ? { ...line, quantity } : line,
-                ),
-              );
-            }}
-            onRemove={(productId) =>
-              setCart((current) => current.filter((line) => line.product.id !== productId))
-            }
-            onClear={() => setCart([])}
-            tendered={tendered}
-            onTenderedChange={setTendered}
-            onSubmit={submitSale}
-            submitting={submitting}
-            canCheckout={canCheckout}
-            error={null}
-          />
-        </div>
+        <SaleWorkspace
+          products={picker.filteredProducts}
+          stockByProduct={stockByProduct}
+          onAdd={picker.addProduct}
+          onRequestRestock={canRequestRestock ? setRestockProduct : undefined}
+          highlightedProductId={picker.highlightedProductId}
+          lines={cart}
+          onChangeQuantity={(productId, quantity) => {
+            setError(null);
+            setCart((current) =>
+              current.map((line) => (line.product.id === productId ? { ...line, quantity } : line)),
+            );
+          }}
+          onRemove={held.removeLine}
+          onClear={held.clearSale}
+          onPause={held.pauseSale}
+          onOpenPaused={() => held.setOpen(true)}
+          pausedCount={held.orders.length}
+          tendered={tendered}
+          onTenderedChange={setTendered}
+          onSubmit={submitSale}
+          submitting={submitting}
+          canCheckout={canCheckout}
+        />
       )}
 
       {restockProduct && locationId && (
@@ -282,6 +253,30 @@ export default function PosPage() {
           }}
         />
       )}
+
+      <HeldSaleDialogs
+        pausedOpen={held.open}
+        orders={held.orders}
+        onResume={held.resumeSale}
+        onDiscard={held.discardOrder}
+        onClosePaused={() => held.setOpen(false)}
+        guard={held.guard}
+      />
+
+      <PosShortcutLayer
+        disabled={Boolean(receipt) || held.open || Boolean(held.guard.pending)}
+        canPause={cart.length > 0 && !submitting}
+        canCharge={canCheckout && !submitting}
+        hasCart={cart.length > 0}
+        hasPaused={held.orders.length > 0}
+        onPause={held.pauseSale}
+        onOpenPaused={() => held.setOpen(true)}
+        onCharge={() => {
+          void submitSale();
+        }}
+        onRemoveLast={held.removeLastItem}
+        onAdjustLast={held.adjustLastQuantity}
+      />
     </main>
   );
 }

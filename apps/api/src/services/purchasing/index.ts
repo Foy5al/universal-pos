@@ -25,10 +25,7 @@ import { conflict, notFound, validationError } from '../../core/errors';
 import { hasStoreScope } from '../../core/principal';
 import { createCrudService, type CrudService } from '../catalog';
 import { createRestockService, type RestockService } from './restock';
-import {
-  createSupplierProductService,
-  type SupplierProductService,
-} from './supplier-products';
+import { createSupplierProductService, type SupplierProductService } from './supplier-products';
 
 export interface PurchasingService {
   suppliers: CrudService<SupplierRecord, CreateSupplierRequest, UpdateSupplierRequest>;
