@@ -12,6 +12,7 @@ import {
   markOutboxRetryable,
   outboxSummary,
   recoverInterruptedSends,
+  unsyncedSaleCounts,
   type PosOfflineDatabase,
 } from '../src';
 
@@ -142,5 +143,46 @@ describe('outbox', () => {
     expect(await recoverInterruptedSends(db, new Date('2026-10-20T10:00:00.000Z'))).toBe(1);
     expect((await db.outbox.get(sale.operationId))?.status).toBe('retryable_error');
     expect(await dueOutboxEvents(db, new Date('2026-10-20T10:00:00.000Z'))).toHaveLength(1);
+  });
+
+  it('counts every sale that is not yet acknowledged', async () => {
+    const accepted = await seedSale();
+    const review = await seedSale();
+    const retryable = await seedSale();
+    const sending = await seedSale();
+
+    await applyPushResult(db, {
+      operationId: accepted.operationId,
+      entityId: accepted.entityId,
+      status: 'accepted',
+      sale: {
+        id: '00000000-0000-4000-8000-0000000000d1',
+        saleNumber: 'INV-20261020-ABCDEF12',
+      } as SyncPushResult['sale'],
+      conflictReason: null,
+      message: null,
+    });
+    await applyPushResult(db, {
+      operationId: review.operationId,
+      entityId: review.entityId,
+      status: 'needs_review',
+      sale: null,
+      conflictReason: 'insufficient_stock',
+      message: 'Insufficient stock for the requested quantity',
+    });
+    await markOutboxRetryable(db, retryable.operationId, new Error('network down'));
+
+    const sendingEvent = await db.outbox.get(sending.operationId);
+    if (!sendingEvent) throw new Error('missing outbox event');
+    await db.outbox.put({ ...sendingEvent, status: 'sending' });
+
+    await expect(unsyncedSaleCounts(db)).resolves.toEqual({
+      pending: 1,
+      retryable: 1,
+      needsReview: 1,
+      rejected: 0,
+      total: 3,
+      needsAttention: 1,
+    });
   });
 });

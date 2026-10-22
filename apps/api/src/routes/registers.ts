@@ -3,6 +3,7 @@ import { Router } from 'express';
 import {
   addCashMovementRequestSchema,
   closeRegisterShiftRequestSchema,
+  createRegisterRequestSchema,
   listQuerySchema,
   openRegisterShiftRequestSchema,
   registerShiftListQuerySchema,
@@ -10,6 +11,8 @@ import {
   successEnvelope,
 } from '@pos/contracts';
 
+import { forbidden } from '../core/errors';
+import { hasStoreScope } from '../core/principal';
 import { asyncHandler } from '../http/asyncHandler';
 import { requirePrincipal } from '../http/requirePrincipal';
 import { authorize } from '../middleware/authorize';
@@ -25,6 +28,20 @@ export function createRegistersRouter(service: RegisterService): Router {
       const principal = requirePrincipal(req);
       const query = listQuerySchema.parse(req.query);
       res.json(successEnvelope(await service.list(principal.organizationId, query)));
+    }),
+  );
+
+  router.post(
+    '/registers',
+    authorize('registers:manage'),
+    asyncHandler(async (req, res) => {
+      const principal = requirePrincipal(req);
+      const input = createRegisterRequestSchema.parse(req.body);
+      if (!hasStoreScope(principal, input.storeId)) {
+        throw forbidden('Store outside assigned scope');
+      }
+      const register = await service.create(principal.organizationId, input);
+      res.status(201).json(successEnvelope(register));
     }),
   );
 
@@ -93,12 +110,7 @@ export function createRegistersRouter(service: RegisterService): Router {
       const principal = requirePrincipal(req);
       const id = resourceIdSchema.parse(req.params.id);
       const input = closeRegisterShiftRequestSchema.parse(req.body);
-      const shift = await service.closeShift(
-        principal.organizationId,
-        principal.userId,
-        id,
-        input,
-      );
+      const shift = await service.closeShift(principal.organizationId, principal.userId, id, input);
       res.json(successEnvelope(shift));
     }),
   );

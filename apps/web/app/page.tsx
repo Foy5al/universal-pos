@@ -1,15 +1,62 @@
-'use client';
-
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
-
-import { getToken } from './lib/api';
 
 interface ModuleLink {
   href: string;
   title: string;
   description: string;
 }
+
+const quickActions: Array<ModuleLink & { index: string; cta: string }> = [
+  {
+    index: '01',
+    href: '/pos',
+    title: 'Start selling',
+    description: 'Open the till, scan products and take payment.',
+    cta: 'Open POS',
+  },
+  {
+    index: '02',
+    href: '/catalog',
+    title: 'Products and prices',
+    description: 'Add products, set prices and keep the catalog tidy.',
+    cta: 'Open catalog',
+  },
+  {
+    index: '03',
+    href: '/inventory',
+    title: 'Stock on hand',
+    description: 'Receive stock, record losses and review low stock alerts.',
+    cta: 'Review stock',
+  },
+  {
+    index: '04',
+    href: '/admin',
+    title: 'Counters and people',
+    description: 'Add checkout counters, managers and cashiers.',
+    cta: 'Manage team',
+  },
+];
+
+const setupSteps: Array<ModuleLink & { step: string }> = [
+  {
+    step: '1',
+    href: '/admin',
+    title: 'Add a counter and your team',
+    description: 'Every checkout needs a counter and a signed-in operator.',
+  },
+  {
+    step: '2',
+    href: '/catalog',
+    title: 'Load products and opening stock',
+    description: 'Prices and stock make the till ready for the first sale.',
+  },
+  {
+    step: '3',
+    href: '/pos',
+    title: 'Open a shift and sell',
+    description: 'Cash, stock and receipts post together at checkout.',
+  },
+];
 
 const moduleGroups: Array<{ title: string; summary: string; items: ModuleLink[] }> = [
   {
@@ -19,13 +66,13 @@ const moduleGroups: Array<{ title: string; summary: string; items: ModuleLink[] 
       {
         href: '/pos',
         title: 'Point of sale',
-        description: 'Scan, take cash, print receipts and work offline.',
+        description: 'Scan, take cash, print receipts and keep selling offline.',
       },
     ],
   },
   {
     title: 'Operate',
-    summary: 'Products and stock',
+    summary: 'Products, stock and suppliers',
     items: [
       {
         href: '/catalog',
@@ -62,8 +109,13 @@ const moduleGroups: Array<{ title: string; summary: string; items: ModuleLink[] 
   },
   {
     title: 'Configure',
-    summary: 'Organization-wide defaults',
+    summary: 'People, counters and defaults',
     items: [
+      {
+        href: '/admin',
+        title: 'Team and counters',
+        description: 'Checkout counters, manager accounts and per-user permissions.',
+      },
       {
         href: '/settings',
         title: 'System settings',
@@ -73,151 +125,158 @@ const moduleGroups: Array<{ title: string; summary: string; items: ModuleLink[] 
   },
 ];
 
-const quickLinks = [
-  { href: '/pos', label: 'POS' },
-  { href: '/catalog', label: 'Catalog' },
-  { href: '/inventory', label: 'Stock' },
-  { href: '/reports', label: 'Reports' },
-  { href: '/settings', label: 'Settings' },
-];
-
 export default function HomePage() {
-  const [signedIn, setSignedIn] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    setSignedIn(Boolean(getToken()));
-  }, []);
-
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 p-4 lg:p-8">
-      <header className="flex flex-wrap items-start justify-between gap-4">
+    <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-8 px-4 py-8 lg:px-6 lg:py-10">
+      <section className="relative overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-6 sm:p-8 lg:p-10">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-24 -top-28 h-72 w-72 rounded-full opacity-20 blur-3xl"
+          style={{ backgroundColor: 'var(--color-accent)' }}
+        />
+        <div className="relative grid items-start gap-8 lg:grid-cols-[1.45fr_1fr]">
+          <div>
+            <p className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] px-3 py-1 text-xs font-medium text-[var(--color-muted)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-accent)]" />
+              Store command center
+            </p>
+            <h1 className="mt-4 max-w-2xl text-3xl font-semibold tracking-tight sm:text-4xl">
+              Run the counter. Keep the books straight.
+            </h1>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-[var(--color-muted)]">
+              Sell online or offline, keep stock accurate and see the day&apos;s numbers in one
+              place. Start at the till, or set up the store first.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center gap-2">
+              <Link href="/pos" className="btn btn-accent text-sm">
+                Open the POS
+                <span aria-hidden="true">→</span>
+              </Link>
+              <Link href="/admin" className="btn text-sm">
+                Add counter or team
+              </Link>
+              <Link href="/reports" className="btn text-sm">
+                View reports
+              </Link>
+            </div>
+            <p className="mt-4 text-xs text-[var(--color-muted)]">
+              Checkout keeps working when the connection drops; sales queue safely and sync when you
+              are back online.
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-background)] p-4 sm:p-5">
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className="text-sm font-semibold">First-time setup</h2>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
+                3 steps
+              </span>
+            </div>
+            <ol className="mt-3 space-y-3">
+              {setupSteps.map((step) => (
+                <li key={step.step}>
+                  <Link
+                    href={step.href}
+                    className="group flex gap-3 rounded-lg p-1.5 transition hover:bg-[var(--color-surface-2)]"
+                  >
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[var(--color-border)] text-xs font-semibold text-[var(--color-accent)]">
+                      {step.step}
+                    </span>
+                    <span>
+                      <span className="block text-sm font-medium group-hover:underline">
+                        {step.title}
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-5 text-[var(--color-muted)]">
+                        {step.description}
+                      </span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="quick-actions-heading" className="space-y-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="quick-actions-heading" className="text-lg font-semibold">
+            Jump back in
+          </h2>
+          <p className="text-xs text-[var(--color-muted)]">The four places you will use most.</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {quickActions.map((action) => (
+            <Link
+              key={action.href}
+              href={action.href}
+              className="group surface flex min-h-40 flex-col p-5 transition hover:-translate-y-0.5 hover:border-[var(--color-focus)]"
+            >
+              <span className="text-xs font-semibold tracking-[0.18em] text-[var(--color-muted)]">
+                {action.index}
+              </span>
+              <span className="mt-2 text-base font-semibold">{action.title}</span>
+              <span className="mt-1 text-sm leading-5 text-[var(--color-muted)]">
+                {action.description}
+              </span>
+              <span className="mt-auto pt-4 text-xs font-semibold text-[var(--color-accent)]">
+                {action.cta}
+                <span
+                  aria-hidden="true"
+                  className="ml-1 inline-block transition group-hover:translate-x-0.5"
+                >
+                  →
+                </span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section aria-labelledby="modules-heading" className="space-y-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-[var(--color-accent)]">
-            Universal POS
-          </p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Store dashboard</h1>
+          <h2 id="modules-heading" className="text-lg font-semibold">
+            All modules
+          </h2>
           <p className="mt-1 text-sm text-[var(--color-muted)]">
             Every part of the store operation, grouped by what you are trying to do.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <nav className="flex flex-wrap items-center gap-2" aria-label="Dashboard navigation">
-            {quickLinks.map((item) => (
-              <Link key={item.href} href={item.href} className="btn text-sm">
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-          {signedIn === false && (
-            <Link href="/login" className="btn btn-accent text-sm">
-              Sign in
-            </Link>
-          )}
-        </div>
-      </header>
 
-      <section className="surface p-6 lg:p-8" aria-labelledby="dashboard-hero-heading">
-        <div className="grid items-center gap-6 lg:grid-cols-[1.5fr_1fr]">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--color-muted)]">
-              Start here
-            </p>
-            <h2 id="dashboard-hero-heading" className="mt-2 text-2xl font-semibold">
-              Open the till, or set the store up first.
-            </h2>
-            <p className="mt-2 max-w-xl text-sm text-[var(--color-muted)]">
-              New stores usually start with the catalog, then stock locations and products. Once
-              prices and opening stock exist, the POS is ready for a shift.
-            </p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Link href="/pos" className="btn btn-accent text-sm">
-                Open the POS
-              </Link>
-              <Link href="/settings" className="btn text-sm">
-                Review system settings
-              </Link>
-            </div>
-            <p className="mt-3 text-xs text-[var(--color-muted)]">
-              {signedIn === null
-                ? 'Checking your session...'
-                : signedIn
-                  ? 'You are signed in on this device.'
-                  : 'You will be asked to sign in when you open the POS.'}
-            </p>
-          </div>
-
-          <ol className="space-y-3 rounded-xl border border-[var(--color-border)] p-4 text-sm">
-            <li className="flex gap-3">
-              <span className="font-semibold text-[var(--color-accent)]">1</span>
-              <span>
-                <span className="font-medium">Set up the catalog</span>
-                <span className="mt-0.5 block text-xs text-[var(--color-muted)]">
-                  Products, prices and low stock alerts.
-                </span>
-              </span>
-            </li>
-            <li className="flex gap-3">
-              <span className="font-semibold text-[var(--color-accent)]">2</span>
-              <span>
-                <span className="font-medium">Receive opening stock</span>
-                <span className="mt-0.5 block text-xs text-[var(--color-muted)]">
-                  Stock locations keep balances and alerts accurate.
-                </span>
-              </span>
-            </li>
-            <li className="flex gap-3">
-              <span className="font-semibold text-[var(--color-accent)]">3</span>
-              <span>
-                <span className="font-medium">Open a shift and sell</span>
-                <span className="mt-0.5 block text-xs text-[var(--color-muted)]">
-                  Stock, cash and receipts post together.
-                </span>
-              </span>
-            </li>
-          </ol>
-        </div>
-      </section>
-
-      <section className="space-y-6" aria-labelledby="modules-heading">
-        <div>
-          <h2 id="modules-heading" className="text-xl font-semibold">
-            Modules
-          </h2>
-          <p className="mt-1 text-sm text-[var(--color-muted)]">
-            Jump straight to the area you need. Organization-wide defaults live under Configure.
-          </p>
-        </div>
-
-        {moduleGroups.map((group) => (
-          <div key={group.title} className="space-y-3">
-            <div className="flex flex-wrap items-baseline gap-2">
-              <h3 className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--color-muted)]">
-                {group.title}
-              </h3>
-              <p className="text-xs text-[var(--color-muted)]">{group.summary}</p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {group.items.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="surface group flex flex-col p-5 transition hover:border-[var(--color-focus)]"
-                >
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="text-base font-semibold">{item.title}</span>
+        <div className="grid gap-4 md:grid-cols-2">
+          {moduleGroups.map((group) => (
+            <div key={group.title} className="surface p-5">
+              <div className="flex flex-wrap items-baseline gap-2">
+                <h3 className="text-sm font-semibold">{group.title}</h3>
+                <p className="text-xs text-[var(--color-muted)]">{group.summary}</p>
+              </div>
+              <div className="mt-3 divide-y divide-[var(--color-border)]">
+                {group.items.map((item) => (
+                  <Link
+                    key={`${group.title}-${item.href}`}
+                    href={item.href}
+                    className="group flex items-center justify-between gap-3 py-3"
+                  >
+                    <span>
+                      <span className="block text-sm font-medium group-hover:underline">
+                        {item.title}
+                      </span>
+                      <span className="mt-0.5 block text-xs leading-5 text-[var(--color-muted)]">
+                        {item.description}
+                      </span>
+                    </span>
                     <span
                       aria-hidden="true"
                       className="text-[var(--color-muted)] transition group-hover:translate-x-0.5 group-hover:text-[var(--color-accent)]"
                     >
                       →
                     </span>
-                  </span>
-                  <span className="mt-1 text-sm text-[var(--color-muted)]">{item.description}</span>
-                </Link>
-              ))}
+                  </Link>
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </section>
 
       <footer className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border)] pt-4 text-xs text-[var(--color-muted)]">

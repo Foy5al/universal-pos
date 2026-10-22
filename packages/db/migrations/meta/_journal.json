@@ -85,6 +85,13 @@
       "when": 1792582342791,
       "tag": "0011_nappy_catseye",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792653067821,
+      "tag": "0012_normal_betty_ross",
+      "breakpoints": true
     }
   ]
 }

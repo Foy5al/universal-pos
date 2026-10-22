@@ -6,6 +6,7 @@ import type { Database } from '../client';
 import {
   memberships,
   rolePermissions,
+  userPermissionOverrides,
   userRoleAssignments,
   users,
 } from '../schema/identity';
@@ -51,9 +52,7 @@ export function createDrizzleAuthorizationRepository(db: Database): Authorizatio
       const membershipRows = await db
         .select({ id: memberships.id })
         .from(memberships)
-        .where(
-          and(eq(memberships.userId, userId), eq(memberships.organizationId, organizationId)),
-        )
+        .where(and(eq(memberships.userId, userId), eq(memberships.organizationId, organizationId)))
         .limit(1);
       if (membershipRows.length === 0) {
         return null;
@@ -84,6 +83,26 @@ export function createDrizzleAuthorizationRepository(db: Database): Authorizatio
         }
         if (row.permissionKey) {
           permissionSet.add(row.permissionKey);
+        }
+      }
+
+      const overrideRows = await db
+        .select({
+          permissionKey: userPermissionOverrides.permissionKey,
+          granted: userPermissionOverrides.granted,
+        })
+        .from(userPermissionOverrides)
+        .where(
+          and(
+            eq(userPermissionOverrides.userId, userId),
+            eq(userPermissionOverrides.organizationId, organizationId),
+          ),
+        );
+      for (const override of overrideRows) {
+        if (override.granted) {
+          permissionSet.add(override.permissionKey);
+        } else {
+          permissionSet.delete(override.permissionKey);
         }
       }
 

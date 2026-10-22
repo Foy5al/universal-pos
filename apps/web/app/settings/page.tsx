@@ -7,6 +7,11 @@ import { useLowStockSettings } from './useLowStockSettings';
 
 const relatedConfiguration = [
   {
+    href: '/admin',
+    title: 'Team and counters',
+    description: 'Checkout counters, manager accounts and per-user permissions.',
+  },
+  {
     href: '/catalog',
     title: 'Catalog and products',
     description: 'Product prices, units and per-product low stock alerts.',

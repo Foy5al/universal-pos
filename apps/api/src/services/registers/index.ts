@@ -3,6 +3,7 @@ import {
   type AddCashMovementRequest,
   type CashMovement,
   type CloseRegisterShiftRequest,
+  type CreateRegisterRequest,
   type ListQuery,
   type OpenRegisterShiftRequest,
   type Page,
@@ -16,16 +17,15 @@ import type {
   RegisterRepository,
   RegisterShiftRecord,
   RegisterShiftRepository,
+  StoreRepository,
 } from '@pos/db';
 
-import { conflict, notFound } from '../../core/errors';
+import { conflict, notFound, validationError } from '../../core/errors';
 
 export interface RegisterService {
   list(organizationId: string, query: ListQuery): Promise<Page<Register>>;
-  listShifts(
-    organizationId: string,
-    query: RegisterShiftListQuery,
-  ): Promise<Page<RegisterShift>>;
+  create(organizationId: string, input: CreateRegisterRequest): Promise<Register>;
+  listShifts(organizationId: string, query: RegisterShiftListQuery): Promise<Page<RegisterShift>>;
   current(organizationId: string, registerId: string): Promise<RegisterShift | null>;
   getShift(organizationId: string, id: string): Promise<RegisterShift>;
   openShift(
@@ -55,9 +55,19 @@ function toMovement(record: CashMovementRecord): CashMovement {
   return record;
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: string }).code === '23505'
+  );
+}
+
 export function createRegisterService(
   registers: RegisterRepository,
   shifts: RegisterShiftRepository,
+  stores: StoreRepository,
 ): RegisterService {
   async function requireRegister(
     organizationId: string,
@@ -82,6 +92,24 @@ export function createRegisterService(
     async list(organizationId, query) {
       const items = await registers.listByOrganization(organizationId);
       return page(items.slice(query.offset, query.offset + query.limit), items.length, query);
+    },
+
+    async create(organizationId, input) {
+      const store = await stores.findInOrganization(organizationId, input.storeId);
+      if (!store) {
+        throw validationError('Store not found');
+      }
+      if (await registers.findByCode(organizationId, input.storeId, input.code)) {
+        throw conflict('A counter with this code already exists in the store');
+      }
+      try {
+        return await registers.create({ organizationId, ...input });
+      } catch (error) {
+        if (isUniqueViolation(error)) {
+          throw conflict('A counter with this code already exists in the store');
+        }
+        throw error;
+      }
     },
 
     async listShifts(organizationId, query) {
@@ -163,4 +191,3 @@ export function createRegisterService(
     },
   };
 }
-

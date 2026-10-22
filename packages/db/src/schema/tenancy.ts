@@ -1,4 +1,4 @@
-import { boolean, index, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 export const organizations = pgTable('organizations', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -57,7 +57,10 @@ export const registers = pgTable(
     code: text('code').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('registers_org_store_idx').on(table.organizationId, table.storeId)],
+  (table) => [
+    index('registers_org_store_idx').on(table.organizationId, table.storeId),
+    uniqueIndex('registers_org_store_code_uq').on(table.organizationId, table.storeId, table.code),
+  ],
 );
 
 export const devices = pgTable(

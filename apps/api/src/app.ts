@@ -11,6 +11,7 @@ import { createPurchasingRouter } from './routes/purchasing';
 import { createRegistersRouter } from './routes/registers';
 import { createReportsRouter } from './routes/reports';
 import { createSalesRouter } from './routes/sales';
+import { createStaffRouter } from './routes/staff';
 import { createStoresRouter } from './routes/stores';
 import { createSyncRouter } from './routes/sync';
 import type { AuthService } from './services/authService';
@@ -20,6 +21,7 @@ import type { PurchasingService } from './services/purchasing';
 import type { RegisterService } from './services/registers';
 import type { ReportsService } from './services/reports';
 import type { SalesService } from './services/sales';
+import type { StaffService } from './services/staff';
 import type { SyncService } from './services/sync';
 import type { StoreRepository } from '@pos/db';
 
@@ -32,6 +34,7 @@ export interface AppDeps {
   registers: RegisterService;
   reports: ReportsService;
   sales: SalesService;
+  staff: StaffService;
   sync: SyncService;
   auth: AuthService;
 }
@@ -61,6 +64,7 @@ export function createApp(deps: AppDeps): Express {
   v1.use(createRegistersRouter(deps.registers));
   v1.use(createReportsRouter(deps.reports));
   v1.use(createSalesRouter(deps.sales));
+  v1.use(createStaffRouter(deps.staff));
   v1.use(createSyncRouter(deps.sync));
   app.use('/v1', v1);
 

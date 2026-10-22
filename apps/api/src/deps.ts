@@ -12,6 +12,7 @@ import {
   createDrizzleReportsRepository,
   createDrizzleSalesRepository,
   createDrizzleSessionRepository,
+  createDrizzleStaffRepository,
   createDrizzleStoreRepository,
   createDrizzleSyncRepository,
   createDrizzleUserRepository,
@@ -26,6 +27,7 @@ import {
   InMemoryReportsRepository,
   InMemorySalesRepository,
   InMemorySessionRepository,
+  InMemoryStaffRepository,
   InMemoryStoreRepository,
   InMemorySyncRepository,
   InMemoryUserRepository,
@@ -37,6 +39,7 @@ import {
   type RegisterRecord,
   type RegisterShiftSeed,
   type SalesSeed,
+  type StaffRecord,
   type StoreRecord,
 } from '@pos/db';
 import type { Principal } from '@pos/contracts';
@@ -51,6 +54,7 @@ import { createPurchasingService } from './services/purchasing';
 import { createRegisterService } from './services/registers';
 import { createReportsService } from './services/reports';
 import { createSalesService } from './services/sales';
+import { createStaffService } from './services/staff';
 import { createSyncService } from './services/sync';
 import { DefaultAuthService } from './services/authService';
 
@@ -69,6 +73,7 @@ export interface MemorySeed {
   registerShifts?: RegisterShiftSeed;
   sales?: SalesSeed;
   refunds?: RefundsSeed;
+  staff?: readonly StaffRecord[];
 }
 
 /** In-memory wiring for tests and local development without a database. */
@@ -76,6 +81,7 @@ export function createMemoryDeps(seed: MemorySeed = {}): AppDeps {
   const sessionRepo = new InMemorySessionRepository();
   const authorization = new InMemoryAuthorizationRepository(seed.principals ?? []);
   const tokens = new OpaqueTokenService();
+  const hasher = new Argon2PasswordHasher();
   const auth = new DefaultAuthService({
     users: new InMemoryUserRepository(seed.users ?? []),
     memberships: new InMemoryMembershipRepository({
@@ -84,10 +90,11 @@ export function createMemoryDeps(seed: MemorySeed = {}): AppDeps {
     }),
     authorization,
     sessions: sessionRepo,
-    hasher: new Argon2PasswordHasher(),
+    hasher,
     tokens,
     sessionTtlMs: DEFAULT_SESSION_TTL_MS,
   });
+  const stores = new InMemoryStoreRepository(seed.stores ?? []);
 
   const catalogRepository = new InMemoryCatalogRepository(seed.catalog);
   const inventoryRepository = new InMemoryInventoryRepository(seed.inventory);
@@ -122,7 +129,7 @@ export function createMemoryDeps(seed: MemorySeed = {}): AppDeps {
 
   return {
     sessions: new RepositorySessionResolver({ sessions: sessionRepo, authorization, tokens }),
-    stores: new InMemoryStoreRepository(seed.stores ?? []),
+    stores,
     catalog: createCatalogService(catalogRepository),
     inventory: createInventoryService(inventoryRepository, catalogRepository.products),
     purchasing: createPurchasingService(
@@ -132,13 +139,18 @@ export function createMemoryDeps(seed: MemorySeed = {}): AppDeps {
     ),
     sales: salesService,
     sync: createSyncService(syncRepository, salesService, inventoryRepository.locations),
-    registers: createRegisterService(registerRepository, registerShiftRepository),
+    registers: createRegisterService(registerRepository, registerShiftRepository, stores),
     reports: createReportsService(
       reportsRepository,
       registerShiftRepository,
       inventoryRepository.locations,
       inventoryRepository.ledger,
     ),
+    staff: createStaffService({
+      staff: new InMemoryStaffRepository(seed.staff ?? []),
+      stores,
+      hasher,
+    }),
     auth,
   };
 }
@@ -148,15 +160,17 @@ export function createPostgresDeps(db: Database): AppDeps {
   const sessionRepo = createDrizzleSessionRepository(db);
   const authorization = createDrizzleAuthorizationRepository(db);
   const tokens = new OpaqueTokenService();
+  const hasher = new Argon2PasswordHasher();
   const auth = new DefaultAuthService({
     users: createDrizzleUserRepository(db),
     memberships: createDrizzleMembershipRepository(db),
     authorization,
     sessions: sessionRepo,
-    hasher: new Argon2PasswordHasher(),
+    hasher,
     tokens,
     sessionTtlMs: DEFAULT_SESSION_TTL_MS,
   });
+  const stores = createDrizzleStoreRepository(db);
 
   const catalogRepository = createDrizzleCatalogRepository(db);
   const inventoryRepository = createDrizzleInventoryRepository(db);
@@ -176,7 +190,7 @@ export function createPostgresDeps(db: Database): AppDeps {
 
   return {
     sessions: new RepositorySessionResolver({ sessions: sessionRepo, authorization, tokens }),
-    stores: createDrizzleStoreRepository(db),
+    stores,
     catalog: createCatalogService(catalogRepository),
     inventory: createInventoryService(inventoryRepository, catalogRepository.products),
     purchasing: createPurchasingService(
@@ -186,13 +200,18 @@ export function createPostgresDeps(db: Database): AppDeps {
     ),
     sales: salesService,
     sync: createSyncService(syncRepository, salesService, inventoryRepository.locations),
-    registers: createRegisterService(registerRepository, registerShiftRepository),
+    registers: createRegisterService(registerRepository, registerShiftRepository, stores),
     reports: createReportsService(
       reportsRepository,
       registerShiftRepository,
       inventoryRepository.locations,
       inventoryRepository.ledger,
     ),
+    staff: createStaffService({
+      staff: createDrizzleStaffRepository(db),
+      stores,
+      hasher,
+    }),
     auth,
   };
 }

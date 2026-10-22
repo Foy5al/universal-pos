@@ -8,6 +8,8 @@ export * from './registers/index';
 export * from './reports/index';
 export * from './sales/index';
 export * from './session';
+export * from './staff';
+export * from './staff.drizzle';
 export * from './store';
 export * from './sync/index';
 export * from './user';

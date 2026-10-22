@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 
+import { ThemeToggle } from '../components/ThemeToggle';
 import { ApiError, fetchSession, getToken, login, setToken } from '../lib/api';
 
 export default function LoginPage() {
@@ -38,7 +39,10 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
+    <main className="relative flex min-h-screen items-center justify-center p-6">
+      <div className="absolute right-4 top-4">
+        <ThemeToggle />
+      </div>
       <div className="w-full max-w-sm">
         <header className="mb-6">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--color-accent)]">

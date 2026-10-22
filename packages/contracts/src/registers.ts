@@ -14,6 +14,19 @@ export const registerSchema = z.object({
 
 export type Register = z.infer<typeof registerSchema>;
 
+export const createRegisterRequestSchema = z.object({
+  storeId: z.uuid(),
+  name: z.string().trim().min(1).max(120),
+  code: z
+    .string()
+    .trim()
+    .min(1)
+    .max(24)
+    .regex(/^[A-Za-z0-9_-]+$/, 'Use letters, numbers, dashes or underscores'),
+});
+
+export type CreateRegisterRequest = z.infer<typeof createRegisterRequestSchema>;
+
 export const REGISTER_SHIFT_STATUSES = ['open', 'closed'] as const;
 
 export const registerShiftStatusSchema = z.enum(REGISTER_SHIFT_STATUSES);

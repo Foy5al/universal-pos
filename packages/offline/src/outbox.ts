@@ -136,6 +136,39 @@ export async function markOutboxRetryable(
   });
 }
 
+export interface UnsyncedSaleCounts {
+  /** Events still queued, including ones currently in flight. */
+  pending: number;
+  retryable: number;
+  needsReview: number;
+  rejected: number;
+  total: number;
+  needsAttention: number;
+}
+
+/**
+ * Index-only counts for the navbar badge; unlike `outboxSummary` this never
+ * loads retained payloads, so it stays cheap as the outbox history grows.
+ */
+export async function unsyncedSaleCounts(db: PosOfflineDatabase): Promise<UnsyncedSaleCounts> {
+  const [pending, sending, retryable, needsReview, rejected] = await Promise.all([
+    db.outbox.where('status').equals('pending').count(),
+    db.outbox.where('status').equals('sending').count(),
+    db.outbox.where('status').equals('retryable_error').count(),
+    db.outbox.where('status').equals('needs_review').count(),
+    db.outbox.where('status').equals('rejected').count(),
+  ]);
+  const queued = pending + sending;
+  return {
+    pending: queued,
+    retryable,
+    needsReview,
+    rejected,
+    total: queued + retryable + needsReview + rejected,
+    needsAttention: needsReview + rejected,
+  };
+}
+
 export async function outboxSummary(db: PosOfflineDatabase): Promise<SyncSummary> {
   const events = await db.outbox.toArray();
   const summary: SyncSummary = {
