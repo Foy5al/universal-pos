@@ -86,7 +86,9 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     headers.authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`/api${path}`, {
+  // `/api` is the deployment prefix owned by routing (Vercel Services, or the
+  // Next.js rewrite in dev); the versioned API path follows it.
+  const response = await fetch(`/api/v1${path}`, {
     method: options.method ?? 'GET',
     headers,
     body: options.body === undefined ? undefined : JSON.stringify(options.body),

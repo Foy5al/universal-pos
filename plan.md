@@ -9,7 +9,7 @@
 - API: standalone Node.js + Express.js + TypeScript REST API with OpenAPI contracts; avoid coupling business logic to Next.js or any host.
 - Primary database: PostgreSQL, Drizzle ORM and versioned SQL migrations; Neon free database for development/testing.
 - Offline store: IndexedDB via Dexie, versioned local schema, service-worker precache, transactional sales outbox.
-- Serverless deployment: Next.js and Express as separate Vercel projects for non-commercial development only; Express exported as a function entrypoint.
+- Serverless deployment: one Vercel project with two Services (`web`, `api`) for non-commercial development only; Express exported as a function entrypoint.
 - Production deployment: Docker images for web, API, PostgreSQL and optional worker/Redis behind reverse proxy; no provider-specific business code.
 - Media: Backblaze B2 (10 GB free, no card) via an S3-compatible storage adapter; MinIO for local dev; allow migration to S3, Cloudflare R2 or another compatible service.
 - Reports: ExcelJS (.xlsx) and CSV, strict tenant/store authorization, streaming or queued export for large datasets.
@@ -175,7 +175,7 @@ universal-pos/
 ```
 
 ## 11. Deployment strategy and free-tier constraints
-- `apps/web`: deploy Next.js to Vercel for non-commercial testing; `apps/api`: separately deploy Vercel-compatible Express entrypoint.
+- One Vercel project with `web` (`apps/web`, `/`) and `api` (`apps/api`, `/api/*`) services, declared in root `vercel.json`; the API is a Vercel-compatible Express entrypoint.
 - `apps/api` exports `app` without calling `listen()` in import path; local/docker server imports `app` and calls `listen()`.
 - Connect API to Neon pooled PostgreSQL through environment variables; use migrations in controlled deployment, not runtime cold start.
 - B2 stores product media via presigned URLs; serve public images through controlled CDN paths; private objects use signed access.

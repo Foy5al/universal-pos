@@ -17,7 +17,7 @@ export async function downloadReport(
   const params = new URLSearchParams({ from: range.from, to: range.to, format });
   if (range.locationId) params.set('locationId', range.locationId);
 
-  const response = await fetch(`/api/reports/${kind}/export?${params.toString()}`, {
+  const response = await fetch(`/api/v1/reports/${kind}/export?${params.toString()}`, {
     headers: token ? { authorization: `Bearer ${token}` } : {},
   });
   if (!response.ok) {
