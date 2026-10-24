@@ -1,6 +1,9 @@
 import type { NextConfig } from 'next';
 
-const apiTarget = process.env.API_PROXY_TARGET ?? 'http://localhost:4000';
+// Rewrites are baked in at build time, so hosted builds must set this to the
+// deployed API origin (see docs/deployment/vercel.md).
+const apiTarget =
+  process.env.API_PROXY_TARGET ?? process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:4000';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,

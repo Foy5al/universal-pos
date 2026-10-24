@@ -9,7 +9,7 @@
     "build": "tsup",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src test",
+    "lint": "eslint src test api",
     "test": "vitest run",
     "seed:demo": "tsx src/seedDemo.ts"
   },
