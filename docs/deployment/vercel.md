@@ -88,7 +88,29 @@ Hobby forbids commercial use; a real store needs the Docker/VPS path first.
 - Report exports are synchronous and bounded (ADR-0021). Large exports must
   become queued jobs before they move here.
 
-## 5. Before real trade
+## 5. Production migrations from GitHub Actions
+
+`.github/workflows/migrate.yml` applies pending Drizzle migrations to Neon on
+every push to `main`. It deliberately does **not** deploy: both Vercel projects
+are connected to the repository, so Vercel builds and promotes the commit
+itself. Triggering a second deployment from Actions would build the same commit
+twice.
+
+1. Repository secret `DATABASE_URL`: the Neon **direct** URL (its host has no
+   `-pooler`), so `drizzle-kit migrate` does not run through the pooler.
+2. Repository variable `DEPLOY_ENABLED=true`. Until it is set the job is
+   skipped and `main` stays green.
+3. Optional but recommended: in each Vercel project open Settings → Deployment
+   Checks → add a GitHub check for this workflow. Production promotion then
+   waits for the migration instead of racing it.
+
+Migrations run before the new code is promoted in the common case, but the two
+are not atomic. Keep every migration backward compatible with the code that is
+already deployed, and roll forward with a new migration instead of reverting
+schema. If the migration fails, Vercel still holds the deployment when the
+Deployment Check is configured.
+
+## 6. Before real trade
 
 Deploy the existing Docker images (`infra/Dockerfile.web`, `infra/Dockerfile.api`,
 `infra/docker-compose.yml`) on a host that permits commercial use, restore or

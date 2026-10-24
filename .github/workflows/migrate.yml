@@ -1,0 +1,33 @@
+name: Migrate production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: migrate-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    # Skipped until the DEPLOY_ENABLED repository variable is set, so an
+    # unconfigured repository keeps a green main branch. See
+    # docs/deployment/vercel.md for the required secret and settings.
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    env:
+      # Direct (non-pooled) Neon URL: migrations should not run through the
+      # connection pooler.
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Apply migrations
+        run: pnpm --filter @pos/db db:migrate
