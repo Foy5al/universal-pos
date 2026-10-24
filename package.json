@@ -25,6 +25,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@neon/config": "^1.9.3",
+    "@neon/env": "^1.6.4",
     "eslint": "^10.13.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.13.0",
