@@ -10,6 +10,19 @@ Two Vercel projects from one repository plus a free Neon Postgres database:
 This is the temporary development target from ADR-0007 and `plan.md` §11. Vercel
 Hobby forbids commercial use; a real store needs the Docker/VPS path first.
 
+## 0. Importing the repository
+
+The import screen detects both apps under `apps/` and offers to import them as
+standalone projects or to group them into one project with Services. Import them
+**as two standalone projects** — one per row in the table above — because the web
+rewrite, environment variables and rollback are per app. Do not import the
+repository root: it has no framework, so Vercel falls back to `turbo run build`
+and then has no output to serve.
+
+If the screen only offers the grouped option, import the repository normally and
+set **Root Directory** by hand to `apps/web` or `apps/api` in the project's
+settings before the first deploy. Delete any project created at the root.
+
 ## 1. Database (Neon free)
 
 1. Create a Neon project and copy the **pooled** connection string (its host
@@ -28,7 +41,8 @@ Hobby forbids commercial use; a real store needs the Docker/VPS path first.
 ## 2. API project
 
 1. Import the repository, set **Root Directory** to `apps/api`, framework
-   preset **Other**.
+   preset **Other**. Set `DATABASE_URL` first: `createDefaultDeps()` throws on a
+   cold start when it is missing, so every request 500s until it is present.
 2. In Settings → Build and Deployment → Root Directory, enable **Include files
    outside of the Root Directory in the Build Step**. The function imports
    `@pos/db`, `@pos/domain` and `@pos/contracts` from `packages/*`; without this
